@@ -215,8 +215,7 @@ async fn download_single_file(
 ) -> Result<(), ReceiveError> {
     tracing::debug!("Downloading file: {:?} with size {}", file_path, size);
 
-    // let mut file = tokio::fs::File::create(file_path).await?;
-    let mut file = tokio::io::sink();
+    let mut file = tokio::fs::File::create(file_path).await?;
 
     let mut buf = vec![0; FILE_BUF_SIZE];
     let mut bytes_written = 0;
