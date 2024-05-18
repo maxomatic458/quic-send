@@ -4,6 +4,8 @@ You can send files and folders over a direct connection (no relay server involve
 
 Because no third party (except the STUN request) is involved, if the holepunch fails, a connection will not be established. But since QUIC is UDP based, the holepunch should work for most networks.
 
+It might be required to run the program with escalated priviliages.
+
 ## Usage
 Sender:
 ```bash
