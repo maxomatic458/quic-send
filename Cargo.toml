@@ -27,3 +27,7 @@ async-recursion = "1.1.1"
 [profile.release]
 lto = true
 codegen-units = 1
+
+[[bin]]
+path = "src/main.rs"
+name = "qs"
