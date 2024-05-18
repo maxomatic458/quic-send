@@ -39,11 +39,11 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
     let total_name = "Total";
 
     let style = ProgressStyle::default_bar()
-        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})").unwrap()
+        .template("{spinner:.green} {prefix} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})").unwrap()
         .progress_chars("##-");
 
     let total_style = ProgressStyle::default_bar()
-        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.yellow/yellow}] {bytes}/{total_bytes} ({eta})").unwrap()
+        .template("{spinner:.green} {prefix} [{bar:40.yellow/yellow}] {bytes}/{total_bytes} ({eta})").unwrap()
         .progress_chars("##-");
 
     let longest_name = files.iter().map(|f| f.name().len()).max().unwrap_or(0);
@@ -61,6 +61,7 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
     }
 
     let total_bar = if bars.len() > 1 {
+        let total_name = format!("{:width$}", total_name, width = longest_name);
         let bar = mp.add(ProgressBar::new(total_size));
         bar.set_style(total_style);
         bar.set_prefix(total_name);
