@@ -1,0 +1,29 @@
+[package]
+name = "quic-send"
+version = "0.1.0"
+edition = "2021"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bincode = "=2.0.0-rc.2"
+clap = { version = "4.5.4", features = ["derive"] }
+hex = "0.4.3"
+rcgen = "0.13.1"
+tokio = { version = "1.37.0", features = ["full"] }
+walkdir = "2.5.0"
+indicatif = "0.17.8"
+dialoguer = "0.11.0"
+color-eyre = "0.6.3"
+async-compression = { version = "0.4.10", features = ["tokio", "gzip"] }
+quinn = { version = "0.10.2", features = ["runtime-tokio"] }
+sha2 = "0.10.8"
+stunclient = "0.4.0"
+rustls = { version = "0.21.5", features = ["dangerous_configuration"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+thiserror = "1.0.60"
+async-recursion = "1.1.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
