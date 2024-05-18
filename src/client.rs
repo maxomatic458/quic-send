@@ -107,7 +107,6 @@ pub async fn send_files(
 
     tracing::info!("Finished sending files");
 
-    send.finish().await?;
     client.wait_idle().await;
 
     Ok(())
