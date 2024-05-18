@@ -1,4 +1,5 @@
 use async_compression::tokio::write::GzipEncoder;
+use sha1::Sha1;
 use std::{
     net::{SocketAddr, UdpSocket},
     path::{Path, PathBuf},
@@ -7,6 +8,7 @@ use std::{
 
 use indicatif::ProgressBar;
 use quinn::{default_runtime, ClientConfig, Endpoint, EndpointConfig, RecvStream, SendStream};
+use sha1::Digest;
 use std::io;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -49,6 +51,7 @@ pub async fn send_files(
     files: &[PathBuf],
     socket: UdpSocket,
     receiver: SocketAddr,
+    checksums: bool,
 ) -> Result<(), SendError> {
     let rt = default_runtime()
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
@@ -82,7 +85,12 @@ pub async fn send_files(
         }
     }
 
-    let file_meta = file_meta(files)?;
+    if checksums {
+        tracing::debug!("Calculating checksums for files");
+        println!("Calculating checksums for files, this may take a while...")
+    }
+
+    let file_meta = file_meta(files, checksums).await?;
     send_packet(
         ClientPacket::FileMeta {
             files: file_meta.clone(),
@@ -90,6 +98,8 @@ pub async fn send_files(
         &mut send,
     )
     .await?;
+
+    println!("Waiting for server to accept files...");
 
     let resp = receive_packet::<ServerPacket>(&mut recv).await?;
     match resp {
@@ -112,15 +122,34 @@ pub async fn send_files(
     Ok(())
 }
 
-fn file_meta(files: &[PathBuf]) -> io::Result<Vec<FileOrDir>> {
+#[async_recursion::async_recursion]
+async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
     let mut out = Vec::new();
 
     for file in files {
         if file.is_file() {
             let file_size = file.metadata()?.len();
+
+            let sha1_hash = if checksums {
+                let mut hasher = Sha1::new();
+                let mut file = tokio::fs::File::open(file).await?;
+                let mut buf = vec![0; FILE_BUF_SIZE];
+                loop {
+                    let n = file.read(&mut buf).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    hasher.update(&buf[..n]);
+                }
+                Some(hasher.finalize().into())
+            } else {
+                None
+            };
+
             out.push(FileOrDir::File {
                 name: file.file_name().unwrap().to_string_lossy().to_string(),
                 size: file_size,
+                hash: sha1_hash,
             });
         } else {
             let mut dir_contents = Vec::new();
@@ -131,7 +160,7 @@ fn file_meta(files: &[PathBuf]) -> io::Result<Vec<FileOrDir>> {
 
             out.push(FileOrDir::Dir {
                 name: file.file_name().unwrap().to_string_lossy().to_string(),
-                sub: file_meta(&dir_contents)?,
+                sub: file_meta(&dir_contents, checksums).await?,
             });
         }
     }

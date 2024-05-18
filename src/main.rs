@@ -24,6 +24,11 @@ pub const FILE_BUF_SIZE: usize = 8192;
 #[derive(Parser, Debug)]
 #[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
 struct Args {
+    /// Use file checksums, this takes some time on the sender side at the start
+    /// and might reduce the overall transfer speed
+    #[clap(long, short)]
+    pub checksums: bool,
+    /// Send or receive files
     #[clap(subcommand)]
     pub mode: Mode,
 }
@@ -89,7 +94,7 @@ async fn main() -> color_eyre::Result<()> {
 
     match args.mode {
         Mode::Send { files } => {
-            client::send_files(&files, socket, other).await?;
+            client::send_files(&files, socket, other, args.checksums).await?;
         }
         Mode::Receive => {
             server::receive_files(socket, other).await?;

@@ -11,12 +11,13 @@ use indicatif::{HumanBytes, ProgressBar};
 use quinn::{
     default_runtime, Endpoint, EndpointConfig, RecvStream, SendStream, ServerConfig, VarInt,
 };
+use sha1::Digest;
 use std::io;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 
 use crate::{
-    common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir},
+    common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir, Sha1Hash},
     packets::{ClientPacket, ServerPacket},
     utils::{progress_bars, self_signed_cert},
     FILE_BUF_SIZE, KEEP_ALIVE_INTERVAL_SECS, VERSION,
@@ -29,6 +30,7 @@ pub enum ReceiveError {
     WriteError(#[from] quinn::WriteError),
     VersionMismatch,
     UnexpectedPacket(ClientPacket),
+    CouldNotVerifyIntegrity(String),
 }
 
 impl std::fmt::Display for ReceiveError {
@@ -39,6 +41,9 @@ impl std::fmt::Display for ReceiveError {
             Self::VersionMismatch => write!(f, "Version mismatch"),
             Self::UnexpectedPacket(p) => write!(f, "Unexpected packet: {:?}", p),
             Self::WriteError(e) => write!(f, "Write error: {}", e),
+            Self::CouldNotVerifyIntegrity(file) => {
+                write!(f, "Could not verify integrity of file: {}", file)
+            }
         }
     }
 }
@@ -130,7 +135,22 @@ fn accept_files(file_meta: &[FileOrDir]) -> bool {
                 .to_string()
         };
 
-        println!("{:width$} {}", name, size_human_bytes, width = longest_name);
+        let hash = if let FileOrDir::File {
+            hash: Some(hash), ..
+        } = file
+        {
+            hex::encode(hash)
+        } else {
+            String::new()
+        };
+
+        println!(
+            "{:width$} {} {}",
+            name,
+            size_human_bytes,
+            hash,
+            width = longest_name
+        );
     }
 
     let total_size_human_bytes = format!("({})", HumanBytes(total_size)).red().to_string();
@@ -158,9 +178,16 @@ async fn download_files(
 
     for (file, bar) in file_meta.iter().zip(bars.iter()) {
         match file {
-            FileOrDir::File { name, size } => {
-                download_single_file(Path::new(name), *size, &mut recv, bar, total_bar.as_ref())
-                    .await?;
+            FileOrDir::File { name, size, hash } => {
+                download_single_file(
+                    Path::new(name),
+                    *size,
+                    &mut recv,
+                    bar,
+                    total_bar.as_ref(),
+                    *hash,
+                )
+                .await?;
             }
             FileOrDir::Dir { name, sub } => {
                 download_directory(
@@ -179,18 +206,22 @@ async fn download_files(
 }
 
 async fn download_single_file(
-    file: &Path,
+    file_path: &Path,
     size: u64,
     recv: &mut GzipDecoder<BufReader<&mut RecvStream>>,
     bar: &ProgressBar,
     total_bar: Option<&ProgressBar>,
+    hash: Option<Sha1Hash>,
 ) -> Result<(), ReceiveError> {
-    tracing::debug!("Downloading file: {:?} with size {}", file, size);
+    tracing::debug!("Downloading file: {:?} with size {}", file_path, size);
 
-    let mut file = tokio::fs::File::create(file).await?;
+    // let mut file = tokio::fs::File::create(file_path).await?;
+    let mut file = tokio::io::sink();
 
     let mut buf = vec![0; FILE_BUF_SIZE];
     let mut bytes_written = 0;
+
+    let mut hasher = sha1::Sha1::new();
 
     while bytes_written < size {
         let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_written) as usize;
@@ -203,9 +234,22 @@ async fn download_single_file(
         file.write_all(&buf[..n]).await.unwrap();
         bytes_written += n as u64;
 
+        if hash.is_some() {
+            hasher.update(&buf[..n]);
+        }
+
         bar.inc(n as u64);
         if let Some(total_bar) = total_bar {
             total_bar.inc(n as u64);
+        }
+    }
+
+    if let Some(expected) = hash {
+        let hash: Sha1Hash = hasher.finalize().into();
+        if expected != hash {
+            return Err(ReceiveError::CouldNotVerifyIntegrity(
+                file_path.display().to_string(),
+            ));
         }
     }
 
@@ -230,8 +274,12 @@ async fn download_directory(
     for sub in sub {
         let path = dir.join(sub.name());
         match sub {
-            FileOrDir::File { name: _, size } => {
-                download_single_file(&path, size, recv, bar, total_bar).await?;
+            FileOrDir::File {
+                name: _,
+                size,
+                hash,
+            } => {
+                download_single_file(&path, size, recv, bar, total_bar, hash).await?;
             }
             FileOrDir::Dir { name: _, sub } => {
                 download_directory(&path, sub, recv, bar, total_bar).await?;

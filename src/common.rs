@@ -4,10 +4,19 @@ use quinn::SendStream;
 use std::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+pub type Sha1Hash = [u8; 20];
+
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum FileOrDir {
-    File { name: String, size: u64 },
-    Dir { name: String, sub: Vec<FileOrDir> },
+    File {
+        name: String,
+        size: u64,
+        hash: Option<Sha1Hash>,
+    },
+    Dir {
+        name: String,
+        sub: Vec<FileOrDir>,
+    },
 }
 
 impl FileOrDir {
