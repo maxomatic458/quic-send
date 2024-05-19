@@ -22,7 +22,9 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 thiserror = "1.0.60"
 async-recursion = "1.1.1"
-sha3 = "0.10.8"
+blake3 = "1.5.1"
+pretty_assertions = "1.4.0"
+serial_test = "3.1.1"
 
 [profile.release]
 lto = true

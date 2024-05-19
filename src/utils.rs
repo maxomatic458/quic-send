@@ -5,8 +5,10 @@ use rcgen;
 use std::io;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
+use std::path::Path;
 use stunclient::StunClient;
 
+use crate::common::Blake3Hash;
 use crate::common::FileOrDir;
 
 /// Generate a self signed certificate and private key
@@ -28,6 +30,7 @@ pub fn external_addr(
 
 /// Perform a UDP hole punch to the remote address
 pub fn hole_punch(socket: &UdpSocket, remote: SocketAddr) -> io::Result<()> {
+    tracing::debug!("Punching hole to {}", remote);
     // TODO: Make this more reliable
     socket.send_to(&[0], remote)?;
 
@@ -75,4 +78,11 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
     };
 
     (bars, total_bar)
+}
+
+pub fn blake3_from_file(path: &Path) -> io::Result<Blake3Hash> {
+    let file = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    std::io::copy(&mut std::io::BufReader::new(file), &mut hasher)?;
+    Ok(hasher.finalize().into())
 }

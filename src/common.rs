@@ -4,14 +4,14 @@ use quinn::SendStream;
 use std::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-pub type Sha3_256Hash = [u8; 32];
+pub type Blake3Hash = [u8; 32];
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum FileOrDir {
     File {
         name: String,
         size: u64,
-        hash: Option<Sha3_256Hash>,
+        hash: Option<Blake3Hash>,
     },
     Dir {
         name: String,

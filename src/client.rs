@@ -6,8 +6,9 @@ use std::{
 };
 
 use indicatif::ProgressBar;
-use quinn::{default_runtime, ClientConfig, Endpoint, EndpointConfig, RecvStream, SendStream};
-use sha3::Digest;
+use quinn::{
+    default_runtime, ClientConfig, Connection, Endpoint, EndpointConfig, RecvStream, SendStream,
+};
 use std::io;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,123 +17,236 @@ use crate::{
     common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir},
     packets::{ClientPacket, ServerPacket},
     utils::progress_bars,
-    FILE_BUF_SIZE, SERVER_NAME, VERSION,
+    FILE_BUF_SIZE, HASH_BUF_SIZE, SERVER_NAME, VERSION,
 };
 
 #[derive(Error, Debug)]
 pub enum SendError {
+    #[error("IO error: {0}")]
     IoError(#[from] io::Error),
+    #[error("Connect error: {0}")]
     ConnectError(#[from] quinn::ConnectError),
+    #[error("Connection error: {0}")]
     ConnectionError(#[from] quinn::ConnectionError),
+    #[error("Write error: {0}")]
     WriteError(#[from] quinn::WriteError),
+    #[error("Read error: {0}")]
     ReadError(#[from] quinn::ReadError),
+    #[error("Unexpected packet: {0:?}")]
     UnexpectedPacket(ServerPacket),
+    #[error("Wrong version, the receiver expected: {0}")]
     WrongVersion(String),
+    #[error("The receiver rejected the files")]
     FilesRejected,
+    #[error("File does not exist: {0:?}")]
+    FileDoesNotExist(PathBuf),
 }
 
-impl std::fmt::Display for SendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::IoError(e) => write!(f, "IO error: {}", e),
-            Self::ConnectError(e) => write!(f, "Connect error: {}", e),
-            Self::ConnectionError(e) => write!(f, "Connection error: {}", e),
-            Self::ReadError(e) => write!(f, "Read error: {}", e),
-            Self::UnexpectedPacket(p) => write!(f, "Unexpected packet: {:?}", p),
-            Self::WrongVersion(v) => write!(f, "Wrong version, the receiver expected: {}", v),
-            Self::FilesRejected => write!(f, "The receiver rejected the files"),
-            Self::WriteError(e) => write!(f, "Write error: {}", e),
-        }
-    }
+pub struct Sender {
+    /// The channel to send packets
+    pub send: SendStream,
+    /// The channel to receive packets
+    pub recv: RecvStream,
+    /// Whether to calculate checksums for files
+    pub checksums: bool,
+    /// Connection
+    pub conn: Connection,
+    /// Client endpoint
+    pub client: Endpoint,
 }
 
-pub async fn send_files(
-    files: &[PathBuf],
-    socket: UdpSocket,
-    receiver: SocketAddr,
-    checksums: bool,
-) -> Result<(), SendError> {
-    let rt = default_runtime()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
+impl Sender {
+    pub async fn connect(
+        socket: UdpSocket,
+        receiver: SocketAddr,
+        checksums: bool,
+    ) -> Result<Self, SendError> {
+        let rt = default_runtime()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
 
-    let mut client = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
+        let mut client = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
 
-    client.set_default_client_config(client_config());
-    let conn = client.connect(receiver, SERVER_NAME)?.await?;
-    tracing::info!("Client connected to server: {:?}", conn.remote_address());
+        client.set_default_client_config(client_config());
+        let conn = client.connect(receiver, SERVER_NAME)?.await?;
+        tracing::debug!("Client connected to server: {:?}", conn.remote_address());
 
-    let (mut send, mut recv) = conn.accept_bi().await?;
-    recv.read_u8().await?; // Ignore opening byte
+        let (mut send, mut recv) = conn.accept_bi().await?;
+        recv.read_u8().await?; // Ignore opening byte
 
-    send_packet(
-        ClientPacket::ConnRequest {
-            version_num: VERSION.to_string(),
-        },
-        &mut send,
-    )
-    .await?;
+        send_packet(
+            ClientPacket::ConnRequest {
+                version_num: VERSION.to_string(),
+            },
+            &mut send,
+        )
+        .await?;
 
-    let resp = receive_packet::<ServerPacket>(&mut recv).await?;
-    match resp {
-        ServerPacket::Ok => {}
-        ServerPacket::WrongVersion { expected } => {
-            return Err(SendError::WrongVersion(expected));
+        let resp = receive_packet::<ServerPacket>(&mut recv).await?;
+        match resp {
+            ServerPacket::Ok => {}
+            ServerPacket::WrongVersion { expected } => {
+                return Err(SendError::WrongVersion(expected));
+            }
+            p => {
+                handle_unexpected_packet(&p);
+                return Err(SendError::UnexpectedPacket(p));
+            }
         }
-        p => {
-            handle_unexpected_packet(&p);
-            return Err(SendError::UnexpectedPacket(p));
+
+        let client = Self {
+            send,
+            recv,
+            checksums,
+            conn,
+            client,
+        };
+
+        Ok(client)
+    }
+
+    pub async fn wait_for_close(&mut self) -> Result<(), SendError> {
+        self.send.finish().await.ok();
+        self.client.wait_idle().await;
+        Ok(())
+    }
+
+    pub(crate) async fn send_file_meta(
+        &mut self,
+        file_meta: &[FileOrDir],
+    ) -> Result<(), SendError> {
+        send_packet(
+            ClientPacket::FileMeta {
+                files: file_meta.to_vec(),
+            },
+            &mut self.send,
+        )
+        .await?;
+
+        let resp = receive_packet::<ServerPacket>(&mut self.recv).await?;
+        match resp {
+            ServerPacket::AcceptFiles => Ok(()),
+            ServerPacket::RejectFiles => Err(SendError::FilesRejected),
+            p => {
+                handle_unexpected_packet(&p);
+                Err(SendError::UnexpectedPacket(p))
+            }
         }
     }
 
-    if checksums {
-        tracing::debug!("Calculating checksums for files");
-        println!("Calculating checksums for files, this may take a while...")
+    pub(crate) async fn upload_files(
+        &mut self,
+        files: &[PathBuf],
+        file_meta: &[FileOrDir],
+    ) -> Result<(), SendError> {
+        // Open a new Unidirectional stream to send files
+        tracing::debug!("Opening file stream");
+        let send = self.conn.open_uni().await?;
+        let mut send = GzipEncoder::new(send);
+
+        let (bars, total_bar) = progress_bars(file_meta);
+
+        for (file, bar) in files.iter().zip(bars) {
+            if file.is_file() {
+                self.upload_single_file(
+                    file,
+                    file.metadata()?.len(),
+                    &mut send,
+                    &bar,
+                    total_bar.as_ref(),
+                )
+                .await?;
+            } else {
+                self.upload_directory(file, &mut send, &bar, total_bar.as_ref())
+                    .await?;
+            }
+        }
+
+        send.shutdown().await?;
+
+        Ok(())
     }
 
-    let file_meta = file_meta(files, checksums).await?;
-    send_packet(
-        ClientPacket::FileMeta {
-            files: file_meta.clone(),
-        },
-        &mut send,
-    )
-    .await?;
+    async fn upload_single_file(
+        &self,
+        path: &Path,
+        size: u64,
+        send: &mut GzipEncoder<SendStream>,
+        bar: &ProgressBar,
+        total_bar: Option<&ProgressBar>,
+    ) -> Result<(), SendError> {
+        tracing::debug!("Uploading file: {:?}", path);
 
-    println!("Waiting for server to accept files...");
+        let mut file = tokio::fs::File::open(path).await?;
 
-    let resp = receive_packet::<ServerPacket>(&mut recv).await?;
-    match resp {
-        ServerPacket::AcceptFiles => {}
-        ServerPacket::RejectFiles => {
-            return Err(SendError::FilesRejected);
+        let mut buf = vec![0; FILE_BUF_SIZE];
+        let mut bytes_read = 0;
+
+        while bytes_read < size {
+            let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_read);
+            let n = file.read(&mut buf[..to_read as usize]).await?;
+
+            if n == 0 {
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected EOF").into());
+            }
+
+            send.write_all(&buf[..n]).await?;
+            bytes_read += n as u64;
+
+            bar.inc(n as u64);
+            if let Some(total_bar) = total_bar {
+                total_bar.inc(n as u64);
+            }
         }
-        p => {
-            handle_unexpected_packet(&p);
-            return Err(SendError::UnexpectedPacket(p));
-        }
+
+        file.shutdown().await?;
+
+        tracing::debug!("Finished uploading file: {:?}", path);
+
+        Ok(())
     }
 
-    upload_files(files, &file_meta, &mut send, &mut recv).await?;
+    #[async_recursion::async_recursion]
+    async fn upload_directory(
+        &self,
+        dir: &Path,
+        send: &mut GzipEncoder<SendStream>,
+        bar: &ProgressBar,
+        total_bar: Option<&ProgressBar>,
+    ) -> Result<(), SendError> {
+        tracing::debug!("Uploading directory: {:?}", dir);
+        for entry in dir.read_dir()? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                self.upload_single_file(&path, path.metadata()?.len(), send, bar, total_bar)
+                    .await?;
+            } else {
+                self.upload_directory(&path, send, bar, total_bar).await?;
+            }
+        }
 
-    tracing::info!("Finished sending files");
-
-    client.wait_idle().await;
-
-    Ok(())
+        tracing::debug!("Finished uploading directory: {:?}", dir);
+        Ok(())
+    }
 }
 
 #[async_recursion::async_recursion]
 async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
     let mut out = Vec::new();
+    let now = std::time::SystemTime::now();
+    if checksums {
+        tracing::debug!("Calculating checksums for files");
+        println!("Calculating checksums for files, this might take a while")
+    }
 
     for file in files {
         if file.is_file() {
             let file_size = file.metadata()?.len();
 
-            let sha1_hash = if checksums {
-                let mut hasher = sha3::Sha3_256::new();
+            let blake3_hash = if checksums {
+                let mut hasher = blake3::Hasher::new();
                 let mut file = tokio::fs::File::open(file).await?;
-                let mut buf = vec![0; FILE_BUF_SIZE];
+                let mut buf = vec![0; HASH_BUF_SIZE];
                 loop {
                     let n = file.read(&mut buf).await?;
                     if n == 0 {
@@ -140,15 +254,23 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
                     }
                     hasher.update(&buf[..n]);
                 }
+
                 Some(hasher.finalize().into())
             } else {
                 None
             };
 
+            tracing::debug!(
+                "File: {:?}, size: {}, hash: {:?}",
+                file,
+                file_size,
+                blake3_hash
+            );
+
             out.push(FileOrDir::File {
                 name: file.file_name().unwrap().to_string_lossy().to_string(),
                 size: file_size,
-                hash: sha1_hash,
+                hash: blake3_hash,
             });
         } else {
             let mut dir_contents = Vec::new();
@@ -164,98 +286,30 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
         }
     }
 
+    if checksums {
+        let elapsed = now.elapsed().unwrap();
+        println!("Finished calculating checksums in {:?}", elapsed);
+    }
+
+    tracing::debug!("Built file meta");
+
     Ok(out)
 }
 
-async fn upload_files(
+pub async fn send_files(
+    socket: UdpSocket,
+    receiver: SocketAddr,
     files: &[PathBuf],
-    file_meta: &[FileOrDir],
-    send: &mut SendStream,
-    _recv: &mut RecvStream,
+    checksums: bool,
 ) -> Result<(), SendError> {
-    tracing::debug!("Uploading {} files", files.len());
+    let mut client = Sender::connect(socket, receiver, checksums).await?;
+    let file_meta = file_meta(files, client.checksums).await?;
+    client.send_file_meta(&file_meta).await?;
+    client.upload_files(files, &file_meta).await?;
+    tracing::debug!("Finished sending files");
 
-    let mut send = GzipEncoder::new(send);
+    client.wait_for_close().await?;
 
-    let (bars, total_bar) = progress_bars(file_meta);
-
-    for (file, bar) in files.iter().zip(bars) {
-        if file.is_file() {
-            upload_single_file(
-                file,
-                file.metadata()?.len(),
-                &mut send,
-                &bar,
-                total_bar.as_ref(),
-            )
-            .await?;
-        } else {
-            upload_directory(file, &mut send, &bar, total_bar.as_ref()).await?;
-        }
-    }
-
-    send.shutdown().await?;
-
-    Ok(())
-}
-
-async fn upload_single_file(
-    path: &Path,
-    size: u64,
-    send: &mut GzipEncoder<&mut SendStream>,
-    bar: &ProgressBar,
-    total_bar: Option<&ProgressBar>,
-) -> Result<(), SendError> {
-    tracing::debug!("Uploading file: {:?}", path);
-
-    let mut file = tokio::fs::File::open(path).await?;
-
-    let mut buf = vec![0; FILE_BUF_SIZE];
-    let mut bytes_read = 0;
-
-    while bytes_read < size {
-        let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_read);
-        let n = file.read(&mut buf[..to_read as usize]).await?;
-
-        if n == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected EOF").into());
-        }
-
-        send.write_all(&buf[..n]).await?;
-        bytes_read += n as u64;
-
-        bar.inc(n as u64);
-        if let Some(total_bar) = total_bar {
-            total_bar.inc(n as u64);
-        }
-    }
-
-    file.shutdown().await?;
-
-    tracing::debug!("Finished uploading file: {:?}", path);
-
-    Ok(())
-}
-
-#[async_recursion::async_recursion]
-async fn upload_directory(
-    dir: &Path,
-    send: &mut GzipEncoder<&mut SendStream>,
-    bar: &ProgressBar,
-    total_bar: Option<&ProgressBar>,
-) -> Result<(), SendError> {
-    tracing::debug!("Uploading directory: {:?}", dir);
-    for entry in dir.read_dir()? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            upload_single_file(&path, path.metadata()?.len(), send, bar, total_bar).await?;
-        } else {
-            upload_directory(&path, send, bar, total_bar).await?;
-        }
-    }
-
-    tracing::debug!("Finished uploading directory: {:?}", dir);
     Ok(())
 }
 
