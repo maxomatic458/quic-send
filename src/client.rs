@@ -11,13 +11,16 @@ use quinn::{
 };
 use std::io;
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+};
 
 use crate::{
     common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir},
     packets::{ClientPacket, ServerPacket},
-    utils::progress_bars,
-    FILE_BUF_SIZE, HASH_BUF_SIZE, SERVER_NAME, VERSION,
+    utils::{blake3_from_file, blake3_from_file_up_to, progress_bars},
+    FILE_BUF_SIZE, SERVER_NAME, VERSION,
 };
 
 #[derive(Error, Debug)]
@@ -43,23 +46,30 @@ pub enum SendError {
 }
 
 pub struct Sender {
+    /// Arguments
+    pub args: SenderArgs,
     /// The channel to send packets
     pub send: SendStream,
     /// The channel to receive packets
     pub recv: RecvStream,
-    /// Whether to calculate checksums for files
-    pub checksums: bool,
     /// Connection
     pub conn: Connection,
     /// Client endpoint
     pub client: Endpoint,
 }
 
+pub struct SenderArgs {
+    /// Calculate and send checksums (blake3)
+    pub checksums: bool,
+    /// Files to send
+    pub files: Vec<PathBuf>,
+}
+
 impl Sender {
     pub async fn connect(
         socket: UdpSocket,
         receiver: SocketAddr,
-        checksums: bool,
+        args: SenderArgs,
     ) -> Result<Self, SendError> {
         let rt = default_runtime()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
@@ -94,9 +104,9 @@ impl Sender {
         }
 
         let client = Self {
+            args,
             send,
             recv,
-            checksums,
             conn,
             client,
         };
@@ -133,19 +143,17 @@ impl Sender {
         }
     }
 
-    pub(crate) async fn upload_files(
-        &mut self,
-        files: &[PathBuf],
-        file_meta: &[FileOrDir],
-    ) -> Result<(), SendError> {
+    pub(crate) async fn upload_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), SendError> {
         // Open a new Unidirectional stream to send files
         tracing::debug!("Opening file stream");
-        let send = self.conn.open_uni().await?;
+        let mut send = self.conn.open_uni().await?;
+        send.write_u8(1).await?; // Opening byte
+        tracing::debug!("Opened file stream"); // FIXME: remove
         let mut send = GzipEncoder::new(send);
 
         let (bars, total_bar) = progress_bars(file_meta);
 
-        for (file, bar) in files.iter().zip(bars) {
+        for (file, bar) in self.args.files.clone().iter().zip(bars) {
             if file.is_file() {
                 self.upload_single_file(
                     file,
@@ -166,8 +174,47 @@ impl Sender {
         Ok(())
     }
 
+    /// Handles how/if the file should be sent
+    /// See [``crate::server::Receiver::handle_save_mode``]
+    async fn handle_receiver_save_mode(&mut self, path: &Path) -> Result<(Option<File>, u64), SendError> {
+        let mut bytes_read = 0;
+        let request = receive_packet::<ServerPacket>(&mut self.recv).await?;
+
+        let file = match request {
+            // Send the whole file
+            ServerPacket::Ok => Some(File::open(path).await?),
+            // Skip the file
+            ServerPacket::SkipFile => {
+                tracing::debug!("Skipping file: {:?}", path);
+                None
+            }
+            // The server requests the file to be sent from a specific position
+            ServerPacket::FileFromPos { pos } => {
+                let hash = if self.args.checksums {
+                    Some(blake3_from_file_up_to(path, pos)?)
+                } else {
+                    None
+                };
+
+                bytes_read = pos;
+                send_packet(ClientPacket::FilePosHash { hash }, &mut self.send).await?;
+
+                let mut file = File::open(path).await?;
+
+                file.seek(io::SeekFrom::Start(pos)).await?;
+                Some(file)
+            }
+            p => {
+                handle_unexpected_packet(&p);
+                return Err(SendError::UnexpectedPacket(p));
+            }
+        };
+
+        Ok((file, bytes_read))
+    }
+
     async fn upload_single_file(
-        &self,
+        &mut self,
         path: &Path,
         size: u64,
         send: &mut GzipEncoder<SendStream>,
@@ -176,10 +223,17 @@ impl Sender {
     ) -> Result<(), SendError> {
         tracing::debug!("Uploading file: {:?}", path);
 
-        let mut file = tokio::fs::File::open(path).await?;
-
+        let (mut file, mut bytes_read) = if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
+            tracing::debug!("BEGIN"); // FIXME: remove
+            (file, bytes_read)
+        } else {
+            tracing::debug!("SKIP"); // FIXME: remove
+            return Ok(());
+        };
+        
         let mut buf = vec![0; FILE_BUF_SIZE];
-        let mut bytes_read = 0;
+
+        bar.inc(bytes_read);
 
         while bytes_read < size {
             let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_read);
@@ -207,7 +261,7 @@ impl Sender {
 
     #[async_recursion::async_recursion]
     async fn upload_directory(
-        &self,
+        &mut self,
         dir: &Path,
         send: &mut GzipEncoder<SendStream>,
         bar: &ProgressBar,
@@ -230,8 +284,7 @@ impl Sender {
     }
 }
 
-#[async_recursion::async_recursion]
-async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
+fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
     let mut out = Vec::new();
     let now = std::time::SystemTime::now();
     if checksums {
@@ -244,18 +297,7 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
             let file_size = file.metadata()?.len();
 
             let blake3_hash = if checksums {
-                let mut hasher = blake3::Hasher::new();
-                let mut file = tokio::fs::File::open(file).await?;
-                let mut buf = vec![0; HASH_BUF_SIZE];
-                loop {
-                    let n = file.read(&mut buf).await?;
-                    if n == 0 {
-                        break;
-                    }
-                    hasher.update(&buf[..n]);
-                }
-
-                Some(hasher.finalize().into())
+                blake3_from_file(file).ok()
             } else {
                 None
             };
@@ -264,7 +306,7 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
                 "File: {:?}, size: {}, hash: {:?}",
                 file,
                 file_size,
-                blake3_hash
+                blake3_hash.map(hex::encode)
             );
 
             out.push(FileOrDir::File {
@@ -281,7 +323,7 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
 
             out.push(FileOrDir::Dir {
                 name: file.file_name().unwrap().to_string_lossy().to_string(),
-                sub: file_meta(&dir_contents, checksums).await?,
+                sub: file_meta(&dir_contents, checksums)?,
             });
         }
     }
@@ -299,13 +341,12 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
 pub async fn send_files(
     socket: UdpSocket,
     receiver: SocketAddr,
-    files: &[PathBuf],
-    checksums: bool,
+    args: SenderArgs,
 ) -> Result<(), SendError> {
-    let mut client = Sender::connect(socket, receiver, checksums).await?;
-    let file_meta = file_meta(files, client.checksums).await?;
+    let mut client = Sender::connect(socket, receiver, args).await?;
+    let file_meta = file_meta(&client.args.files, client.args.checksums)?;
     client.send_file_meta(&file_meta).await?;
-    client.upload_files(files, &file_meta).await?;
+    client.upload_files(&file_meta).await?;
     tracing::debug!("Finished sending files");
 
     client.wait_for_close().await?;

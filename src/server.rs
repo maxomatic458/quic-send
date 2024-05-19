@@ -1,4 +1,5 @@
 use async_compression::tokio::bufread::GzipDecoder;
+use blake3::Hasher;
 use color_eyre::owo_colors::OwoColorize;
 use core::time;
 use std::{
@@ -14,12 +15,15 @@ use quinn::{
 };
 use std::io;
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+};
 
 use crate::{
     common::{handle_unexpected_packet, receive_packet, send_packet, Blake3Hash, FileOrDir},
     packets::{ClientPacket, ServerPacket},
-    utils::{progress_bars, self_signed_cert},
+    utils::{progress_bars, self_signed_cert, update_hasher},
     FILE_BUF_SIZE, KEEP_ALIVE_INTERVAL_SECS, VERSION,
 };
 
@@ -40,6 +44,8 @@ pub enum ReceiveError {
 }
 
 pub struct Receiver {
+    /// Arguments
+    pub args: ReceiverArgs,
     /// The channel to send packets
     pub send: SendStream,
     /// The channel to receive packets
@@ -50,8 +56,39 @@ pub struct Receiver {
     pub server: Endpoint,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SaveMode {
+    /// If the file already exists, skip it
+    SkipIfNotExists,
+    /// Overwrite files
+    Overwrite,
+    /// Resume a download (will skip if the senders file size >= the receivers file size)
+    Resume,
+    /// Ask for each file
+    PerFile,
+}
+
+impl SaveMode {
+    pub fn from_flags(overwrite: bool, append: bool, per_file: bool) -> Self {
+        match (overwrite, append, per_file) {
+            (true, false, false) => Self::Overwrite,
+            (false, true, false) => Self::Resume,
+            (false, false, true) => Self::PerFile,
+            _ => Self::SkipIfNotExists,
+        }
+    }
+}
+
+pub struct ReceiverArgs {
+    pub save_mode: SaveMode,
+}
+
 impl Receiver {
-    pub async fn connect(socket: UdpSocket, _sender: SocketAddr) -> Result<Self, ReceiveError> {
+    pub async fn connect(
+        socket: UdpSocket,
+        _sender: SocketAddr,
+        args: ReceiverArgs,
+    ) -> Result<Self, ReceiveError> {
         let rt = default_runtime()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
 
@@ -89,6 +126,7 @@ impl Receiver {
             send_packet(ServerPacket::Ok, &mut send).await?;
 
             return Ok(Self {
+                args,
                 send,
                 recv,
                 conn,
@@ -172,20 +210,22 @@ impl Receiver {
             .unwrap()
     }
 
-    async fn download_files(&self, file_meta: &[FileOrDir]) -> Result<(), ReceiveError> {
-        let recv = self.conn.accept_uni().await?;
-        let mut recv = GzipDecoder::new(tokio::io::BufReader::with_capacity(FILE_BUF_SIZE, recv));
+    async fn download_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), ReceiveError> {
+        tracing::debug!("called"); // FIXME: remove
+        let mut recv = self.conn.accept_uni().await?;
+        recv.read_u8().await?; // Read opening byte
         tracing::debug!("Accepted file stream");
+        let mut recv = GzipDecoder::new(tokio::io::BufReader::with_capacity(FILE_BUF_SIZE, recv));
+        tracing::debug!("Accepted file stream"); // FIXME: remove
 
         let (bars, total_bar) = progress_bars(file_meta);
 
         for (file, bar) in file_meta.iter().zip(bars.iter()) {
+            tracing::info!("Downloading file: {:?}", file.name());
             match file {
                 FileOrDir::File { name, size, hash } => {
-                    let file = tokio::fs::File::create(Path::new(name)).await?;
                     self.download_single_file(
-                        file,
-                        name,
+                        Path::new(name),
                         *size,
                         &mut recv,
                         bar,
@@ -210,27 +250,139 @@ impl Receiver {
         Ok(())
     }
 
+    /// Either
+    /// - (default) skip a file if it already exists
+    /// - ``-a`` append to a file if a download was interrupted
+    /// - ``-o`` overwrite a file
+    /// - ``-p`` ask for each file
+    ///
+    /// [``crate::client::Sender::handle_receiver_save_mode``] is the client counterpart
+    async fn handle_save_mode(
+        &mut self,
+        path: &Path,
+        hasher: Option<&mut Hasher>,
+        mode: SaveMode,
+    ) -> Result<(Option<File>, u64), ReceiveError> {
+        let mut bytes_written = 0;
+        let mode = if mode == SaveMode::PerFile {
+
+            // if the file doesnt exist there is nothing to do
+            if !path.exists() {
+                SaveMode::SkipIfNotExists
+            } else {
+                let items = &["Skip", "Resume", "Overwrite"];
+                let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt(format!(
+                        "File: {:?} already exists, what do you want to do?",
+                        path
+                    ))
+                    .items(items)
+                    .default(0)
+                    .interact()
+                    .unwrap();
+            
+                match selection {
+                    0 => {
+                        tracing::debug!("Skipping file: {:?}", path);
+                        send_packet(ServerPacket::SkipFile, &mut self.send).await?;
+                        return Ok((None, 0));
+                    }
+                    1 => SaveMode::Resume,
+                    2 => SaveMode::Overwrite,
+                    _ => unreachable!(),
+                }
+            }
+        } else {
+            mode
+        };
+
+        let file = match mode {
+            SaveMode::SkipIfNotExists => {
+                if path.exists() {
+                    tracing::debug!("Skipping file: {:?}", path);
+                    send_packet(ServerPacket::SkipFile, &mut self.send).await?;
+                    return Ok((None, 0));
+                }
+                send_packet(ServerPacket::Ok, &mut self.send).await?;
+                Some(File::create(path).await?)
+            }
+            SaveMode::Overwrite => {
+                tracing::debug!("Overwriting file: {:?}", path);
+                send_packet(ServerPacket::Ok, &mut self.send).await?;
+                Some(File::create(path).await?)
+            }
+            SaveMode::Resume => {
+                tracing::debug!("Appending to file: {:?}", path);
+                // first get the length of the file
+                let hash: Option<Blake3Hash> = if let Some(hasher) = hasher {
+                    update_hasher(hasher, path)?;
+                    Some(hasher.clone().finalize().into())
+                } else {
+                    None
+                };
+
+                let file = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .open(path)
+                    .await?;
+                let size = file.metadata().await?.len();
+                bytes_written = size;
+                send_packet(ServerPacket::FileFromPos { pos: size }, &mut self.send).await?;
+
+                let resp = receive_packet::<ClientPacket>(&mut self.recv).await?;
+                match resp {
+                    ClientPacket::FilePosHash { hash: client_hash } => {
+                        if client_hash != hash {
+                            return Err(ReceiveError::CouldNotVerifyIntegrity(
+                                path.display().to_string(),
+                            ));
+                        }
+                    }
+                    p => {
+                        handle_unexpected_packet(&p);
+                        return Err(ReceiveError::UnexpectedPacket(p));
+                    }
+                }
+
+                Some(file)
+            }
+            SaveMode::PerFile => unreachable!(),
+        };
+
+        Ok((file, bytes_written))
+    }
+
     #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn download_single_file<F>(
-        &self,
-        mut file: F,
-        name: &str,
+    pub(crate) async fn download_single_file(
+        &mut self,
+        file_path: &Path,
         size: u64,
         recv: &mut GzipDecoder<BufReader<RecvStream>>,
         bar: &ProgressBar,
         total_bar: Option<&ProgressBar>,
         hash: Option<Blake3Hash>,
-    ) -> Result<(), ReceiveError>
-    // For testing
-    where
-        F: AsyncWriteExt + Unpin + std::fmt::Debug,
-    {
-        tracing::debug!("Downloading file: {:?} with size {}", file, size);
+    ) -> Result<(), ReceiveError> {
+        tracing::debug!("Downloading file: {:?} with size {}", file_path, size);
 
+        // let mut bytes_written = 0;
+        let mut hasher = if hash.is_some() {
+            Some(blake3::Hasher::new())
+        } else {
+            None
+        };
+        
+        let (mut file, mut bytes_written) = if let (Some(file), bytes_written) = self
+        .handle_save_mode(file_path, hasher.as_mut(), self.args.save_mode)
+        .await?
+        {
+            (file, bytes_written)
+        } else {
+            return Ok(());
+        };
+        
         let mut buf = vec![0; FILE_BUF_SIZE];
-        let mut bytes_written = 0;
 
-        let mut hasher = blake3::Hasher::new();
+        bar.inc(bytes_written);
 
         while bytes_written < size {
             let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_written) as usize;
@@ -243,7 +395,7 @@ impl Receiver {
             file.write_all(&buf[..n]).await.unwrap();
             bytes_written += n as u64;
 
-            if hash.is_some() {
+            if let Some(hasher) = hasher.as_mut() {
                 hasher.update(&buf[..n]);
             }
 
@@ -254,23 +406,25 @@ impl Receiver {
         }
 
         if let Some(expected) = hash {
-            let hash: Blake3Hash = hasher.finalize().into();
+            let hash: Blake3Hash = hasher.unwrap().finalize().into();
             if expected != hash {
-                return Err(ReceiveError::CouldNotVerifyIntegrity(name.to_string()));
+                return Err(ReceiveError::CouldNotVerifyIntegrity(
+                    file_path.display().to_string(),
+                ));
             }
-            tracing::debug!("File integrity verified: {:?}", name)
+            tracing::debug!("File integrity verified: {:?}", file_path);
         }
 
         file.shutdown().await.unwrap();
 
-        tracing::debug!("Finished downloading file: {:?}", name);
+        tracing::debug!("Finished downloading file: {:?}", file_path);
 
         Ok(())
     }
 
     #[async_recursion::async_recursion]
     async fn download_directory(
-        &self,
+        &mut self,
         dir: &Path,
         sub: Vec<FileOrDir>,
         recv: &mut GzipDecoder<BufReader<RecvStream>>,
@@ -283,12 +437,11 @@ impl Receiver {
         for sub in sub {
             let path = dir.join(sub.name());
             match sub {
-                FileOrDir::File { name, size, hash } => {
-                    let file = tokio::fs::File::create(&path).await?;
-                    self.download_single_file(file, &name, size, recv, bar, total_bar, hash)
+                FileOrDir::File { size, hash, .. } => {
+                    self.download_single_file(&path, size, recv, bar, total_bar, hash)
                         .await?;
                 }
-                FileOrDir::Dir { name: _, sub } => {
+                FileOrDir::Dir { sub, .. } => {
                     self.download_directory(&path, sub, recv, bar, total_bar)
                         .await?;
                 }
@@ -300,8 +453,12 @@ impl Receiver {
     }
 }
 
-pub async fn receive_files(socket: UdpSocket, _sender: SocketAddr) -> Result<(), ReceiveError> {
-    let mut server = Receiver::connect(socket, _sender).await?;
+pub async fn receive_files(
+    socket: UdpSocket,
+    _sender: SocketAddr,
+    args: ReceiverArgs,
+) -> Result<(), ReceiveError> {
+    let mut server = Receiver::connect(socket, _sender, args).await?;
 
     let file_meta = server.receive_file_meta().await?;
     if server.accept_files(&file_meta) {

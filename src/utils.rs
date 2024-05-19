@@ -1,8 +1,11 @@
+use blake3::Hasher;
+use clap::ValueEnum;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use rcgen;
 use std::io;
+use std::io::Read;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
 use std::path::Path;
@@ -10,6 +13,41 @@ use stunclient::StunClient;
 
 use crate::common::Blake3Hash;
 use crate::common::FileOrDir;
+use crate::HASH_BUF_SIZE;
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    pub fn to_tracing_level(&self) -> tracing::Level {
+        match self {
+            Self::Trace => tracing::Level::TRACE,
+            Self::Debug => tracing::Level::DEBUG,
+            Self::Info => tracing::Level::INFO,
+            Self::Warn => tracing::Level::WARN,
+            Self::Error => tracing::Level::ERROR,
+        }
+    }
+}
+
+impl From<&str> for LogLevel {
+    fn from(s: &str) -> Self {
+        match s {
+            "trace" => Self::Trace,
+            "debug" => Self::Debug,
+            "info" => Self::Info,
+            "warn" => Self::Warn,
+            "error" => Self::Error,
+            _ => Self::Info,
+        }
+    }
+}
 
 /// Generate a self signed certificate and private key
 pub fn self_signed_cert() -> Result<(rustls::Certificate, rustls::PrivateKey), rcgen::Error> {
@@ -83,6 +121,30 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
 pub fn blake3_from_file(path: &Path) -> io::Result<Blake3Hash> {
     let file = std::fs::File::open(path)?;
     let mut hasher = blake3::Hasher::new();
-    std::io::copy(&mut std::io::BufReader::new(file), &mut hasher)?;
+    std::io::copy(
+        &mut std::io::BufReader::with_capacity(HASH_BUF_SIZE, file),
+        &mut hasher,
+    )?;
     Ok(hasher.finalize().into())
+}
+
+pub fn blake3_from_file_up_to(path: &Path, pos: u64) -> io::Result<Blake3Hash> {
+    let file = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    std::io::copy(
+        &mut std::io::BufReader::with_capacity(HASH_BUF_SIZE, file.take(pos)),
+        &mut hasher,
+    )?;
+    Ok(hasher.finalize().into())
+}
+
+/// Update a hasher with the contents of a file,
+/// this is for continuing interrupted downloads
+pub fn update_hasher(hasher: &mut Hasher, path: &Path) -> io::Result<()> {
+    let file = std::fs::File::open(path)?;
+    std::io::copy(
+        &mut std::io::BufReader::with_capacity(HASH_BUF_SIZE, file),
+        hasher,
+    )?;
+    Ok(())
 }
