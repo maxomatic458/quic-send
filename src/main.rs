@@ -64,7 +64,7 @@ async fn main() -> Result<(), AppError> {
     color_eyre::install().ok();
 
     let subscriber = tracing_subscriber::fmt::Subscriber::builder()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::WARN)
         .without_time()
         .with_thread_ids(false)
         .with_target(false)
