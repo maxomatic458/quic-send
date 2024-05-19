@@ -149,7 +149,6 @@ impl Sender {
         tracing::debug!("Opening file stream");
         let mut send = self.conn.open_uni().await?;
         send.write_u8(1).await?; // Opening byte
-        tracing::debug!("Opened file stream"); // FIXME: remove
         let mut send = GzipEncoder::new(send);
 
         let (bars, total_bar) = progress_bars(file_meta);
@@ -164,9 +163,11 @@ impl Sender {
                     total_bar.as_ref(),
                 )
                 .await?;
+                bar.finish();
             } else {
                 self.upload_directory(file, &mut send, &bar, total_bar.as_ref())
                     .await?;
+                bar.finish();
             }
         }
 
@@ -228,10 +229,8 @@ impl Sender {
 
         let (mut file, mut bytes_read) =
             if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
-                tracing::debug!("BEGIN"); // FIXME: remove
                 (file, bytes_read)
             } else {
-                tracing::debug!("SKIP"); // FIXME: remove
                 return Ok(());
             };
 

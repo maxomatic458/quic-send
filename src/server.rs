@@ -211,12 +211,10 @@ impl Receiver {
     }
 
     async fn download_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), ReceiveError> {
-        tracing::debug!("called"); // FIXME: remove
         let mut recv = self.conn.accept_uni().await?;
         recv.read_u8().await?; // Read opening byte
         tracing::debug!("Accepted file stream");
         let mut recv = GzipDecoder::new(tokio::io::BufReader::with_capacity(FILE_BUF_SIZE, recv));
-        tracing::debug!("Accepted file stream"); // FIXME: remove
 
         let (bars, total_bar) = progress_bars(file_meta);
 
@@ -233,6 +231,7 @@ impl Receiver {
                         *hash,
                     )
                     .await?;
+                    bar.finish();
                 }
                 FileOrDir::Dir { name, sub } => {
                     self.download_directory(
@@ -243,6 +242,7 @@ impl Receiver {
                         total_bar.as_ref(),
                     )
                     .await?;
+                    bar.finish();
                 }
             }
         }
@@ -357,7 +357,7 @@ impl Receiver {
     pub(crate) async fn download_single_file(
         &mut self,
         file_path: &Path, // Output path of the file
-        size: u64, // Expected size of the file
+        size: u64,        // Expected size of the file
         recv: &mut GzipDecoder<BufReader<RecvStream>>,
         bar: &ProgressBar, // Progress bar of the file or of the parent directory
         total_bar: Option<&ProgressBar>, // Total progress barw

@@ -16,7 +16,7 @@ use tokio::io::AsyncSeekExt;
 use crate::common::Blake3Hash;
 use crate::common::FileOrDir;
 use crate::HASH_BUF_SIZE;
- 
+
 #[derive(Debug, Clone, ValueEnum)]
 pub enum LogLevel {
     Trace,
