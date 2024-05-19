@@ -26,10 +26,6 @@ pub const HASH_BUF_SIZE: usize = 8192 * 6;
 #[derive(Parser, Debug)]
 #[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
 struct Args {
-    /// Use file checksums, this takes some time on the sender side at the start
-    /// and might reduce the overall transfer speed
-    #[clap(long, short)]
-    pub checksums: bool,
     /// Send or receive files
     #[clap(subcommand)]
     pub mode: Mode,
@@ -39,6 +35,10 @@ struct Args {
 enum Mode {
     #[clap(name = "send", about = "Send files")]
     Send {
+        /// Use file hashes, this takes some time on the sender side at the start
+        /// and might reduce the overall transfer speed
+        #[clap(long, short)]
+        hash: bool,
         /// Files/directories to send
         #[clap(name = "files or directories", required = true)]
         files: Vec<PathBuf>,
@@ -75,7 +75,7 @@ async fn main() -> Result<(), AppError> {
     let args = Args::parse();
 
     // Check if the files even exist
-    if let Mode::Send { files } = &args.mode {
+    if let Mode::Send { files, .. } = &args.mode {
         for file in files {
             if !file.exists() {
                 return Err(SendError::FileDoesNotExist(file.clone()).into());
@@ -104,8 +104,8 @@ async fn main() -> Result<(), AppError> {
     hole_punch(&socket, other)?;
 
     match args.mode {
-        Mode::Send { files } => {
-            client::send_files(socket, other, &files, args.checksums).await?;
+        Mode::Send { hash, files } => {
+            client::send_files(socket, other, &files, hash).await?;
         }
         Mode::Receive => {
             server::receive_files(socket, other).await?;
