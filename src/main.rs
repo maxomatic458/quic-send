@@ -1,6 +1,6 @@
 use std::{
     net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
-    path::PathBuf, str::FromStr,
+    path::PathBuf,
 };
 
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
     server::{ReceiverArgs, SaveMode},
     utils::hole_punch,
 };
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use color_eyre::owo_colors::OwoColorize;
 use server::ReceiveError;
 use thiserror::Error;
@@ -65,8 +65,6 @@ enum Mode {
     },
 }
 
-
-
 #[derive(Error, Debug)]
 enum AppError {
     #[error("STUN error: {0}")]
@@ -92,7 +90,6 @@ async fn main() -> Result<(), AppError> {
         .finish();
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-
 
     // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {

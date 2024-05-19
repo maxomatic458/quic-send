@@ -265,22 +265,22 @@ impl Receiver {
     ) -> Result<(Option<File>, u64), ReceiveError> {
         let mut bytes_written = 0;
         let mode = if mode == SaveMode::PerFile {
-
             // if the file doesnt exist there is nothing to do
             if !path.exists() {
                 SaveMode::SkipIfNotExists
             } else {
                 let items = &["Skip", "Resume", "Overwrite"];
-                let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                    .with_prompt(format!(
-                        "File: {:?} already exists, what do you want to do?",
-                        path
-                    ))
-                    .items(items)
-                    .default(0)
-                    .interact()
-                    .unwrap();
-            
+                let selection =
+                    dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                        .with_prompt(format!(
+                            "File: {:?} already exists, what do you want to do?",
+                            path
+                        ))
+                        .items(items)
+                        .default(0)
+                        .interact()
+                        .unwrap();
+
                 match selection {
                     0 => {
                         tracing::debug!("Skipping file: {:?}", path);
@@ -370,16 +370,16 @@ impl Receiver {
         } else {
             None
         };
-        
+
         let (mut file, mut bytes_written) = if let (Some(file), bytes_written) = self
-        .handle_save_mode(file_path, hasher.as_mut(), self.args.save_mode)
-        .await?
+            .handle_save_mode(file_path, hasher.as_mut(), self.args.save_mode)
+            .await?
         {
             (file, bytes_written)
         } else {
             return Ok(());
         };
-        
+
         let mut buf = vec![0; FILE_BUF_SIZE];
 
         bar.inc(bytes_written);

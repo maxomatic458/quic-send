@@ -176,7 +176,10 @@ impl Sender {
 
     /// Handles how/if the file should be sent
     /// See [``crate::server::Receiver::handle_save_mode``]
-    async fn handle_receiver_save_mode(&mut self, path: &Path) -> Result<(Option<File>, u64), SendError> {
+    async fn handle_receiver_save_mode(
+        &mut self,
+        path: &Path,
+    ) -> Result<(Option<File>, u64), SendError> {
         let mut bytes_read = 0;
         let request = receive_packet::<ServerPacket>(&mut self.recv).await?;
 
@@ -223,14 +226,15 @@ impl Sender {
     ) -> Result<(), SendError> {
         tracing::debug!("Uploading file: {:?}", path);
 
-        let (mut file, mut bytes_read) = if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
-            tracing::debug!("BEGIN"); // FIXME: remove
-            (file, bytes_read)
-        } else {
-            tracing::debug!("SKIP"); // FIXME: remove
-            return Ok(());
-        };
-        
+        let (mut file, mut bytes_read) =
+            if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
+                tracing::debug!("BEGIN"); // FIXME: remove
+                (file, bytes_read)
+            } else {
+                tracing::debug!("SKIP"); // FIXME: remove
+                return Ok(());
+            };
+
         let mut buf = vec![0; FILE_BUF_SIZE];
 
         bar.inc(bytes_read);
