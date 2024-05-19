@@ -314,17 +314,18 @@ impl Receiver {
             SaveMode::Resume => {
                 tracing::debug!("Appending to file: {:?}", path);
                 // first get the length of the file
+                let mut file = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .open(path)
+                    .await?;
+
                 let hash: Option<Blake3Hash> = if let Some(hasher) = hasher {
-                    update_hasher(hasher, path)?;
+                    update_hasher(hasher, &mut file).await?;
                     Some(hasher.clone().finalize().into())
                 } else {
                     None
                 };
 
-                let file = tokio::fs::OpenOptions::new()
-                    .append(true)
-                    .open(path)
-                    .await?;
                 let size = file.metadata().await?.len();
                 bytes_written = size;
                 send_packet(ServerPacket::FileFromPos { pos: size }, &mut self.send).await?;
@@ -352,19 +353,18 @@ impl Receiver {
         Ok((file, bytes_written))
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Download a single file
     pub(crate) async fn download_single_file(
         &mut self,
-        file_path: &Path,
-        size: u64,
+        file_path: &Path, // Output path of the file
+        size: u64, // Expected size of the file
         recv: &mut GzipDecoder<BufReader<RecvStream>>,
-        bar: &ProgressBar,
-        total_bar: Option<&ProgressBar>,
-        hash: Option<Blake3Hash>,
+        bar: &ProgressBar, // Progress bar of the file or of the parent directory
+        total_bar: Option<&ProgressBar>, // Total progress barw
+        hash: Option<Blake3Hash>, // Expected hash of the file
     ) -> Result<(), ReceiveError> {
         tracing::debug!("Downloading file: {:?} with size {}", file_path, size);
 
-        // let mut bytes_written = 0;
         let mut hasher = if hash.is_some() {
             Some(blake3::Hasher::new())
         } else {

@@ -1,4 +1,5 @@
 use async_compression::tokio::write::GzipEncoder;
+use async_recursion::async_recursion;
 use std::{
     net::{SocketAddr, UdpSocket},
     path::{Path, PathBuf},
@@ -19,7 +20,7 @@ use tokio::{
 use crate::{
     common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir},
     packets::{ClientPacket, ServerPacket},
-    utils::{blake3_from_file, blake3_from_file_up_to, progress_bars},
+    utils::{blake3_from_file_from, blake3_from_path, progress_bars},
     FILE_BUF_SIZE, SERVER_NAME, VERSION,
 };
 
@@ -193,16 +194,15 @@ impl Sender {
             }
             // The server requests the file to be sent from a specific position
             ServerPacket::FileFromPos { pos } => {
+                let mut file = File::open(path).await?;
                 let hash = if self.args.checksums {
-                    Some(blake3_from_file_up_to(path, pos)?)
+                    Some(blake3_from_file_from(&mut file, pos).await?)
                 } else {
                     None
                 };
 
                 bytes_read = pos;
                 send_packet(ClientPacket::FilePosHash { hash }, &mut self.send).await?;
-
-                let mut file = File::open(path).await?;
 
                 file.seek(io::SeekFrom::Start(pos)).await?;
                 Some(file)
@@ -288,7 +288,8 @@ impl Sender {
     }
 }
 
-fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
+#[async_recursion]
+async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
     let mut out = Vec::new();
     let now = std::time::SystemTime::now();
     if checksums {
@@ -301,7 +302,7 @@ fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
             let file_size = file.metadata()?.len();
 
             let blake3_hash = if checksums {
-                blake3_from_file(file).ok()
+                Some(blake3_from_path(file).await?)
             } else {
                 None
             };
@@ -327,7 +328,7 @@ fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
 
             out.push(FileOrDir::Dir {
                 name: file.file_name().unwrap().to_string_lossy().to_string(),
-                sub: file_meta(&dir_contents, checksums)?,
+                sub: file_meta(&dir_contents, checksums).await?,
             });
         }
     }
@@ -348,7 +349,7 @@ pub async fn send_files(
     args: SenderArgs,
 ) -> Result<(), SendError> {
     let mut client = Sender::connect(socket, receiver, args).await?;
-    let file_meta = file_meta(&client.args.files, client.args.checksums)?;
+    let file_meta = file_meta(&client.args.files, client.args.checksums).await?;
     client.send_file_meta(&file_meta).await?;
     client.upload_files(&file_meta).await?;
     tracing::debug!("Finished sending files");

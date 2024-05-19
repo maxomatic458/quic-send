@@ -5,16 +5,18 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use rcgen;
 use std::io;
-use std::io::Read;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
 use std::path::Path;
 use stunclient::StunClient;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncSeekExt;
 
 use crate::common::Blake3Hash;
 use crate::common::FileOrDir;
 use crate::HASH_BUF_SIZE;
-
+ 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum LogLevel {
     Trace,
@@ -118,33 +120,35 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
     (bars, total_bar)
 }
 
-pub fn blake3_from_file(path: &Path) -> io::Result<Blake3Hash> {
-    let file = std::fs::File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    std::io::copy(
-        &mut std::io::BufReader::with_capacity(HASH_BUF_SIZE, file),
-        &mut hasher,
-    )?;
-    Ok(hasher.finalize().into())
+pub async fn blake3_from_path(path: &Path) -> io::Result<Blake3Hash> {
+    let mut file = File::open(path).await?;
+    blake3_from_file_from(&mut file, 0).await
 }
 
-pub fn blake3_from_file_up_to(path: &Path, pos: u64) -> io::Result<Blake3Hash> {
-    let file = std::fs::File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    std::io::copy(
-        &mut std::io::BufReader::with_capacity(HASH_BUF_SIZE, file.take(pos)),
-        &mut hasher,
-    )?;
+pub async fn blake3_from_file_from(file: &mut File, pos: u64) -> io::Result<Blake3Hash> {
+    let mut buf = [0; HASH_BUF_SIZE];
+    file.seek(io::SeekFrom::Start(pos)).await?;
+    let mut hasher = Hasher::new();
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     Ok(hasher.finalize().into())
 }
 
 /// Update a hasher with the contents of a file,
 /// this is for continuing interrupted downloads
-pub fn update_hasher(hasher: &mut Hasher, path: &Path) -> io::Result<()> {
-    let file = std::fs::File::open(path)?;
-    std::io::copy(
-        &mut std::io::BufReader::with_capacity(HASH_BUF_SIZE, file),
-        hasher,
-    )?;
+pub async fn update_hasher(hasher: &mut Hasher, file: &mut File) -> io::Result<()> {
+    let mut buf = [0; HASH_BUF_SIZE];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     Ok(())
 }
