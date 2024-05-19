@@ -290,11 +290,6 @@ impl Sender {
 #[async_recursion]
 async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrDir>> {
     let mut out = Vec::new();
-    let now = std::time::SystemTime::now();
-    if checksums {
-        tracing::debug!("Calculating checksums for files");
-        println!("Calculating checksums for files, this might take a while")
-    }
 
     for file in files {
         if file.is_file() {
@@ -306,12 +301,12 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
                 None
             };
 
-            tracing::debug!(
-                "File: {:?}, size: {}, hash: {:?}",
-                file,
-                file_size,
-                blake3_hash.map(hex::encode)
-            );
+            // tracing::debug!(
+            //     "File: {:?}, size: {}, hash: {:?}",
+            //     file,
+            //     file_size,
+            //     blake3_hash.map(hex::encode)
+            // );
 
             out.push(FileOrDir::File {
                 name: file.file_name().unwrap().to_string_lossy().to_string(),
@@ -331,13 +326,6 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
             });
         }
     }
-
-    if checksums {
-        let elapsed = now.elapsed().unwrap();
-        println!("Finished calculating checksums in {:?}", elapsed);
-    }
-
-    tracing::debug!("Built file meta");
 
     Ok(out)
 }

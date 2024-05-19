@@ -25,7 +25,7 @@ pub enum ServerPacket {
     AcceptFiles,
     /// [`ClientPacket::FileMeta`] was rejected
     RejectFiles,
-    /// [`crate::server::SaveMode::Skip`]
+    /// [`crate::server::SaveMode::SkipIfNotExists`]
     SkipFile,
     /// If [`crate::server::SaveMode::Append`] is used,
     /// the server will request the file to be sent from a specific

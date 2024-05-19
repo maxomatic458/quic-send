@@ -126,7 +126,7 @@ pub async fn blake3_from_path(path: &Path) -> io::Result<Blake3Hash> {
 }
 
 pub async fn blake3_from_file_from(file: &mut File, pos: u64) -> io::Result<Blake3Hash> {
-    let mut buf = [0; HASH_BUF_SIZE];
+    let mut buf = vec![0; HASH_BUF_SIZE];
     file.seek(io::SeekFrom::Start(pos)).await?;
     let mut hasher = Hasher::new();
     loop {
@@ -142,7 +142,7 @@ pub async fn blake3_from_file_from(file: &mut File, pos: u64) -> io::Result<Blak
 /// Update a hasher with the contents of a file,
 /// this is for continuing interrupted downloads
 pub async fn update_hasher(hasher: &mut Hasher, file: &mut File) -> io::Result<()> {
-    let mut buf = [0; HASH_BUF_SIZE];
+    let mut buf = vec![0; HASH_BUF_SIZE];
     loop {
         let n = file.read(&mut buf).await?;
         if n == 0 {

@@ -78,7 +78,7 @@ enum AppError {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), AppError> {
+async fn main() -> color_eyre::Result<()> {
     color_eyre::install().ok();
 
     let args = Args::parse();

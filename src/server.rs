@@ -219,7 +219,7 @@ impl Receiver {
         let (bars, total_bar) = progress_bars(file_meta);
 
         for (file, bar) in file_meta.iter().zip(bars.iter()) {
-            tracing::info!("Downloading file: {:?}", file.name());
+            tracing::debug!("Downloading file: {:?}", file.name());
             match file {
                 FileOrDir::File { name, size, hash } => {
                     self.download_single_file(
