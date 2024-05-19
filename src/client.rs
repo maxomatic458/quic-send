@@ -1,5 +1,4 @@
 use async_compression::tokio::write::GzipEncoder;
-use sha1::Sha1;
 use std::{
     net::{SocketAddr, UdpSocket},
     path::{Path, PathBuf},
@@ -8,7 +7,7 @@ use std::{
 
 use indicatif::ProgressBar;
 use quinn::{default_runtime, ClientConfig, Endpoint, EndpointConfig, RecvStream, SendStream};
-use sha1::Digest;
+use sha3::Digest;
 use std::io;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -131,7 +130,7 @@ async fn file_meta(files: &[PathBuf], checksums: bool) -> io::Result<Vec<FileOrD
             let file_size = file.metadata()?.len();
 
             let sha1_hash = if checksums {
-                let mut hasher = Sha1::new();
+                let mut hasher = sha3::Sha3_256::new();
                 let mut file = tokio::fs::File::open(file).await?;
                 let mut buf = vec![0; FILE_BUF_SIZE];
                 loop {

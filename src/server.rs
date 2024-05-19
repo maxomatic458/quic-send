@@ -11,13 +11,13 @@ use indicatif::{HumanBytes, ProgressBar};
 use quinn::{
     default_runtime, Endpoint, EndpointConfig, RecvStream, SendStream, ServerConfig, VarInt,
 };
-use sha1::Digest;
+use sha3::Digest;
 use std::io;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 
 use crate::{
-    common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir, Sha1Hash},
+    common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir, Sha3_256Hash},
     packets::{ClientPacket, ServerPacket},
     utils::{progress_bars, self_signed_cert},
     FILE_BUF_SIZE, KEEP_ALIVE_INTERVAL_SECS, VERSION,
@@ -211,7 +211,7 @@ async fn download_single_file(
     recv: &mut GzipDecoder<BufReader<&mut RecvStream>>,
     bar: &ProgressBar,
     total_bar: Option<&ProgressBar>,
-    hash: Option<Sha1Hash>,
+    hash: Option<Sha3_256Hash>,
 ) -> Result<(), ReceiveError> {
     tracing::debug!("Downloading file: {:?} with size {}", file_path, size);
 
@@ -220,7 +220,7 @@ async fn download_single_file(
     let mut buf = vec![0; FILE_BUF_SIZE];
     let mut bytes_written = 0;
 
-    let mut hasher = sha1::Sha1::new();
+    let mut hasher = sha3::Sha3_256::new();
 
     while bytes_written < size {
         let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_written) as usize;
@@ -244,7 +244,7 @@ async fn download_single_file(
     }
 
     if let Some(expected) = hash {
-        let hash: Sha1Hash = hasher.finalize().into();
+        let hash: Sha3_256Hash = hasher.finalize().into();
         if expected != hash {
             return Err(ReceiveError::CouldNotVerifyIntegrity(
                 file_path.display().to_string(),
