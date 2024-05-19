@@ -4,6 +4,8 @@ use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use rcgen;
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::PrivateKeyDer;
 use std::io;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
@@ -52,10 +54,15 @@ impl From<&str> for LogLevel {
 }
 
 /// Generate a self signed certificate and private key
-pub fn self_signed_cert() -> Result<(rustls::Certificate, rustls::PrivateKey), rcgen::Error> {
-    let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])?;
-    let key = rustls::PrivateKey(cert.key_pair.serialize_der());
-    Ok((rustls::Certificate(cert.cert.der().to_vec()), key))
+pub fn self_signed_cert() -> Result<(CertificateDer<'static>, PrivateKeyDer<'static>), rcgen::Error>
+{
+    let cert_key = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])?;
+    let cert = cert_key.cert.der();
+    let key = cert_key.key_pair.serialize_der();
+
+    // let cer = CertificateDer::from(cert);
+
+    Ok((cert.to_owned(), key.try_into().unwrap()))
 }
 
 /// Query the external address of the socket using a STUN server

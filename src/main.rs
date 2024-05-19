@@ -10,6 +10,7 @@ use crate::{
 };
 use clap::{Parser, Subcommand};
 use color_eyre::owo_colors::OwoColorize;
+use rustls::crypto::{self, CryptoProvider};
 use server::ReceiveError;
 use thiserror::Error;
 use utils::LogLevel;
@@ -91,6 +92,7 @@ async fn main() -> color_eyre::Result<()> {
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
+    CryptoProvider::install_default(crypto::aws_lc_rs::default_provider()).unwrap();
     // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {
         for file in files {

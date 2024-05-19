@@ -141,7 +141,7 @@ impl Receiver {
     }
 
     pub async fn close(&mut self) -> Result<(), ReceiveError> {
-        self.send.finish().await.ok();
+        self.send.finish().ok();
         self.conn.close(VarInt::from_u32(0), b"");
         Ok(())
     }
