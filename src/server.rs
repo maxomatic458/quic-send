@@ -131,7 +131,7 @@ impl Receiver {
         Ok(())
     }
 
-    pub(crate) async fn receive_file_meta(&mut self) -> Result<Vec<FileOrDir>, ReceiveError> {
+    async fn receive_file_meta(&mut self) -> Result<Vec<FileOrDir>, ReceiveError> {
         let packet = receive_packet::<ClientPacket>(&self.conn).await?;
         match packet {
             ClientPacket::FileMeta { files } => Ok(files),
@@ -331,7 +331,7 @@ impl Receiver {
     }
 
     /// Download a single file
-    pub(crate) async fn download_single_file(
+    async fn download_single_file(
         &mut self,
         file_path: &Path,                // Output path of the file
         size: u64,                       // Expected size of the file

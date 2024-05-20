@@ -44,7 +44,8 @@ struct Args {
 enum Mode {
     #[clap(name = "send", about = "Send files")]
     Send {
-        /// Use file hashes, this takes some time on the sender side at the start
+        /// Use file checksums to verify the integrity of the files,
+        /// this takes some time on the sender side at the start
         /// and might reduce the overall transfer speed
         #[clap(long, short)]
         checksums: bool,
@@ -60,7 +61,7 @@ enum Mode {
         /// Append to files if they already exist (if a previous transfer was interrupted)
         #[clap(long, short, conflicts_with = "overwrite")]
         resume: bool,
-        /// Ask for every file whether to overwrite or append
+        /// Ask for every file which is already present whether to overwrite or append
         #[clap(long, short, conflicts_with = "overwrite", conflicts_with = "resume")]
         per_file: bool,
     },

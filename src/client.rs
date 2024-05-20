@@ -107,15 +107,12 @@ impl Sender {
         Ok(client)
     }
 
-    pub async fn wait_for_close(&mut self) -> Result<(), SendError> {
+    async fn wait_for_close(&mut self) -> Result<(), SendError> {
         self.client.wait_idle().await;
         Ok(())
     }
 
-    pub(crate) async fn send_file_meta(
-        &mut self,
-        file_meta: &[FileOrDir],
-    ) -> Result<(), SendError> {
+    async fn send_file_meta(&mut self, file_meta: &[FileOrDir]) -> Result<(), SendError> {
         send_packet(
             ClientPacket::FileMeta {
                 files: file_meta.to_vec(),
@@ -135,7 +132,7 @@ impl Sender {
         }
     }
 
-    pub(crate) async fn upload_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), SendError> {
+    async fn upload_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), SendError> {
         tracing::debug!("Opening file stream");
 
         let (bars, total_bar) = progress_bars(file_meta);
