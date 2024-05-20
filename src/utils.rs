@@ -13,7 +13,6 @@ use std::path::Path;
 use stunclient::StunClient;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeekExt;
 
 use crate::common::Blake3Hash;
 use crate::common::FileOrDir;
@@ -129,21 +128,29 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
 
 pub async fn blake3_from_path(path: &Path) -> io::Result<Blake3Hash> {
     let mut file = File::open(path).await?;
-    blake3_from_file_from(&mut file, 0).await
+    let end = file.metadata().await?.len();
+
+    blake3_from_file(&mut file, end).await
 }
 
-pub async fn blake3_from_file_from(file: &mut File, pos: u64) -> io::Result<Blake3Hash> {
-    let mut buf = vec![0; HASH_BUF_SIZE];
-    file.seek(io::SeekFrom::Start(pos)).await?;
+/// Calculate the blake3 hash of a file
+pub async fn blake3_from_file(file: &mut File, end: u64) -> io::Result<Blake3Hash> {
     let mut hasher = Hasher::new();
-    loop {
-        let n = file.read(&mut buf).await?;
+    let mut buf = vec![0; HASH_BUF_SIZE];
+    let mut pos = 0;
+
+    while pos <= end {
+        let to_read = std::cmp::min(HASH_BUF_SIZE as u64, end - pos);
+        // tracing::info!("Hashing: {} / {}", pos, end);
+        let n = file.read(&mut buf[..to_read as usize]).await?;
         if n == 0 {
             break;
         }
         hasher.update(&buf[..n]);
+        pos += n as u64;
     }
-    Ok(hasher.finalize().into())
+    let hash = hasher.finalize().into();
+    Ok(hash)
 }
 
 /// Update a hasher with the contents of a file,

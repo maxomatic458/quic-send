@@ -25,7 +25,7 @@ use tokio::{
 use crate::{
     common::{handle_unexpected_packet, receive_packet, send_packet, FileOrDir},
     packets::{ClientPacket, ServerPacket},
-    utils::{blake3_from_file_from, blake3_from_path, progress_bars},
+    utils::{blake3_from_file, blake3_from_path, progress_bars},
     FILE_BUF_SIZE, SERVER_NAME, VERSION,
 };
 
@@ -182,7 +182,7 @@ impl Sender {
             ServerPacket::FileFromPos { pos } => {
                 let mut file = File::open(path).await?;
                 let hash = if self.args.checksums {
-                    Some(blake3_from_file_from(&mut file, pos).await?)
+                    Some(blake3_from_file(&mut file, pos).await?)
                 } else {
                     None
                 };
@@ -218,6 +218,9 @@ impl Sender {
 
         let (mut file, mut bytes_read) =
             if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
+                if bytes_read > 0 {
+                    tracing::info!("Resuming file: {:?}", path);
+                }
                 (file, bytes_read)
             } else {
                 tracing::info!("Skipping file: {:?}", path);

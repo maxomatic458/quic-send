@@ -290,6 +290,7 @@ impl Receiver {
                 } else {
                     tracing::debug!("Appending to file: {:?}", path);
                     let mut file = tokio::fs::OpenOptions::new()
+                        .read(true)
                         .append(true)
                         .open(path)
                         .await?;
@@ -355,6 +356,9 @@ impl Receiver {
             .handle_save_mode(file_path, hasher.as_mut(), self.args.save_mode)
             .await?
         {
+            if bytes_written > 0 {
+                tracing::info!("Resuming file: {:?}", file_path);
+            }
             (file, bytes_written)
         } else {
             tracing::info!("Skipping file: {:?}", file_path);
