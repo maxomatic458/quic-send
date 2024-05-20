@@ -9,10 +9,7 @@ use std::{
 };
 
 use indicatif::{HumanBytes, ProgressBar};
-use quinn::{
-    default_runtime, Connection, Endpoint, EndpointConfig, RecvStream, SendStream, ServerConfig,
-    VarInt,
-};
+use quinn::{default_runtime, Connection, Endpoint, EndpointConfig, ServerConfig, VarInt};
 use std::io;
 use thiserror::Error;
 use tokio::{
@@ -35,6 +32,8 @@ pub enum ReceiveError {
     ConnectionError(#[from] quinn::ConnectionError),
     #[error("Write error: {0}")]
     WriteError(#[from] quinn::WriteError),
+    #[error("Read error: {0}")]
+    ReadError(#[from] quinn::ReadError),
     #[error("Version mismatch")]
     VersionMismatch,
     #[error("Unexpected packet: {0:?}")]
@@ -46,10 +45,6 @@ pub enum ReceiveError {
 pub struct Receiver {
     /// Arguments
     pub args: ReceiverArgs,
-    /// The channel to send packets
-    pub send: SendStream,
-    /// The channel to receive packets
-    pub recv: RecvStream,
     /// The connection
     pub conn: Connection,
     /// Server endpoint
@@ -100,10 +95,7 @@ impl Receiver {
                 conn.remote_address()
             );
 
-            let (mut send, mut recv) = conn.open_bi().await?;
-            send.write_u8(1).await?; // Open the stream
-
-            let packet = receive_packet::<ClientPacket>(&mut recv).await?;
+            let packet = receive_packet::<ClientPacket>(&conn).await?;
             match packet {
                 ClientPacket::ConnRequest { version_num } => {
                     if version_num != VERSION {
@@ -111,7 +103,7 @@ impl Receiver {
                             ServerPacket::WrongVersion {
                                 expected: VERSION.to_string(),
                             },
-                            &mut send,
+                            &conn,
                         )
                         .await?;
                         return Err(ReceiveError::VersionMismatch);
@@ -123,15 +115,9 @@ impl Receiver {
                 }
             }
 
-            send_packet(ServerPacket::Ok, &mut send).await?;
+            send_packet(ServerPacket::Ok, &conn).await?;
 
-            return Ok(Self {
-                args,
-                send,
-                recv,
-                conn,
-                server,
-            });
+            return Ok(Self { args, conn, server });
         }
 
         Err(ReceiveError::IoError(io::Error::new(
@@ -141,13 +127,12 @@ impl Receiver {
     }
 
     pub async fn close(&mut self) -> Result<(), ReceiveError> {
-        self.send.finish().ok();
         self.conn.close(VarInt::from_u32(0), b"");
         Ok(())
     }
 
     pub(crate) async fn receive_file_meta(&mut self) -> Result<Vec<FileOrDir>, ReceiveError> {
-        let packet = receive_packet::<ClientPacket>(&mut self.recv).await?;
+        let packet = receive_packet::<ClientPacket>(&self.conn).await?;
         match packet {
             ClientPacket::FileMeta { files } => Ok(files),
             p => {
@@ -211,21 +196,14 @@ impl Receiver {
     }
 
     async fn download_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), ReceiveError> {
-        let mut recv = self.conn.accept_uni().await?;
-        recv.read_u8().await?; // Read opening byte
-        tracing::debug!("Accepted file stream");
-        let mut recv = GzipDecoder::new(tokio::io::BufReader::with_capacity(FILE_BUF_SIZE, recv));
-
         let (bars, total_bar) = progress_bars(file_meta);
 
         for (file, bar) in file_meta.iter().zip(bars.iter()) {
-            tracing::debug!("Downloading file: {:?}", file.name());
             match file {
                 FileOrDir::File { name, size, hash } => {
                     self.download_single_file(
                         Path::new(name),
                         *size,
-                        &mut recv,
                         bar,
                         total_bar.as_ref(),
                         *hash,
@@ -234,14 +212,8 @@ impl Receiver {
                     bar.finish();
                 }
                 FileOrDir::Dir { name, sub } => {
-                    self.download_directory(
-                        Path::new(name),
-                        sub.clone(),
-                        &mut recv,
-                        bar,
-                        total_bar.as_ref(),
-                    )
-                    .await?;
+                    self.download_directory(Path::new(name), sub.clone(), bar, total_bar.as_ref())
+                        .await?;
                     bar.finish();
                 }
             }
@@ -284,7 +256,7 @@ impl Receiver {
                 match selection {
                     0 => {
                         tracing::debug!("Skipping file: {:?}", path);
-                        send_packet(ServerPacket::SkipFile, &mut self.send).await?;
+                        send_packet(ServerPacket::SkipFile, &self.conn).await?;
                         return Ok((None, 0));
                     }
                     1 => SaveMode::Resume,
@@ -300,52 +272,56 @@ impl Receiver {
             SaveMode::SkipIfNotExists => {
                 if path.exists() {
                     tracing::debug!("Skipping file: {:?}", path);
-                    send_packet(ServerPacket::SkipFile, &mut self.send).await?;
+                    send_packet(ServerPacket::SkipFile, &self.conn).await?;
                     return Ok((None, 0));
                 }
-                send_packet(ServerPacket::Ok, &mut self.send).await?;
+                send_packet(ServerPacket::Ok, &self.conn).await?;
                 Some(File::create(path).await?)
             }
             SaveMode::Overwrite => {
                 tracing::debug!("Overwriting file: {:?}", path);
-                send_packet(ServerPacket::Ok, &mut self.send).await?;
+                send_packet(ServerPacket::Ok, &self.conn).await?;
                 Some(File::create(path).await?)
             }
             SaveMode::Resume => {
-                tracing::debug!("Appending to file: {:?}", path);
-                // first get the length of the file
-                let mut file = tokio::fs::OpenOptions::new()
-                    .append(true)
-                    .open(path)
-                    .await?;
-
-                let hash: Option<Blake3Hash> = if let Some(hasher) = hasher {
-                    update_hasher(hasher, &mut file).await?;
-                    Some(hasher.clone().finalize().into())
+                if !path.exists() {
+                    send_packet(ServerPacket::Ok, &self.conn).await?;
+                    Some(File::create(path).await?)
                 } else {
-                    None
-                };
+                    tracing::debug!("Appending to file: {:?}", path);
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .append(true)
+                        .open(path)
+                        .await?;
+                    // TODO: if hash is different, download the whole file
+                    let hash: Option<Blake3Hash> = if let Some(hasher) = hasher {
+                        update_hasher(hasher, &mut file).await?;
+                        Some(hasher.clone().finalize().into())
+                    } else {
+                        None
+                    };
 
-                let size = file.metadata().await?.len();
-                bytes_written = size;
-                send_packet(ServerPacket::FileFromPos { pos: size }, &mut self.send).await?;
+                    let size = file.metadata().await?.len();
+                    bytes_written = size;
+                    send_packet(ServerPacket::FileFromPos { pos: size }, &self.conn).await?;
 
-                let resp = receive_packet::<ClientPacket>(&mut self.recv).await?;
-                match resp {
-                    ClientPacket::FilePosHash { hash: client_hash } => {
-                        if client_hash != hash {
-                            return Err(ReceiveError::CouldNotVerifyIntegrity(
-                                path.display().to_string(),
-                            ));
+                    let resp = receive_packet::<ClientPacket>(&self.conn).await?;
+                    match resp {
+                        ClientPacket::FilePosHash { hash: client_hash } => {
+                            if client_hash != hash {
+                                return Err(ReceiveError::CouldNotVerifyIntegrity(
+                                    path.display().to_string(),
+                                ));
+                            }
+                        }
+                        p => {
+                            handle_unexpected_packet(&p);
+                            return Err(ReceiveError::UnexpectedPacket(p));
                         }
                     }
-                    p => {
-                        handle_unexpected_packet(&p);
-                        return Err(ReceiveError::UnexpectedPacket(p));
-                    }
-                }
 
-                Some(file)
+                    Some(file)
+                }
             }
             SaveMode::PerFile => unreachable!(),
         };
@@ -356,14 +332,18 @@ impl Receiver {
     /// Download a single file
     pub(crate) async fn download_single_file(
         &mut self,
-        file_path: &Path, // Output path of the file
-        size: u64,        // Expected size of the file
-        recv: &mut GzipDecoder<BufReader<RecvStream>>,
-        bar: &ProgressBar, // Progress bar of the file or of the parent directory
+        file_path: &Path,                // Output path of the file
+        size: u64,                       // Expected size of the file
+        bar: &ProgressBar,               // Progress bar of the file or of the parent directory
         total_bar: Option<&ProgressBar>, // Total progress barw
-        hash: Option<Blake3Hash>, // Expected hash of the file
+        hash: Option<Blake3Hash>,        // Expected hash of the file
     ) -> Result<(), ReceiveError> {
         tracing::debug!("Downloading file: {:?} with size {}", file_path, size);
+
+        let mut recv = self.conn.accept_uni().await?;
+        recv.read_u8().await?; // Read opening byte
+
+        let mut recv = GzipDecoder::new(BufReader::with_capacity(FILE_BUF_SIZE, recv));
 
         let mut hasher = if hash.is_some() {
             Some(blake3::Hasher::new())
@@ -377,22 +357,24 @@ impl Receiver {
         {
             (file, bytes_written)
         } else {
+            tracing::info!("Skipping file: {:?}", file_path);
             return Ok(());
         };
 
+        tracing::debug!("waiting for file data!");
         let mut buf = vec![0; FILE_BUF_SIZE];
 
         bar.inc(bytes_written);
 
         while bytes_written < size {
             let to_read = std::cmp::min(FILE_BUF_SIZE as u64, size - bytes_written) as usize;
-            let n = recv.read(&mut buf[..to_read]).await?;
+            let n = recv.read_exact(&mut buf[..to_read]).await?;
 
             if n == 0 {
                 return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected EOF").into());
             }
 
-            file.write_all(&buf[..n]).await.unwrap();
+            file.write_all(&buf[..n]).await?;
             bytes_written += n as u64;
 
             if let Some(hasher) = hasher.as_mut() {
@@ -405,8 +387,8 @@ impl Receiver {
             }
         }
 
-        if let Some(expected) = hash {
-            let hash: Blake3Hash = hasher.unwrap().finalize().into();
+        if let (Some(hasher), Some(expected)) = (hasher, hash) {
+            let hash: Blake3Hash = hasher.finalize().into();
             if expected != hash {
                 return Err(ReceiveError::CouldNotVerifyIntegrity(
                     file_path.display().to_string(),
@@ -415,7 +397,9 @@ impl Receiver {
             tracing::debug!("File integrity verified: {:?}", file_path);
         }
 
-        file.shutdown().await.unwrap();
+        recv.read_u8().await?; // the data will have a closing byte, to prevent sending nothing
+
+        file.shutdown().await?;
 
         tracing::debug!("Finished downloading file: {:?}", file_path);
 
@@ -427,23 +411,22 @@ impl Receiver {
         &mut self,
         dir: &Path,
         sub: Vec<FileOrDir>,
-        recv: &mut GzipDecoder<BufReader<RecvStream>>,
+        // recv: &mut GzipDecoder<BufReader<RecvStream>>,
         bar: &ProgressBar,
         total_bar: Option<&ProgressBar>,
     ) -> Result<(), ReceiveError> {
         tracing::debug!("Downloading directory: {:?}", dir);
-        tokio::fs::create_dir(dir).await?;
+        tokio::fs::create_dir(dir).await.ok();
 
         for sub in sub {
             let path = dir.join(sub.name());
             match sub {
                 FileOrDir::File { size, hash, .. } => {
-                    self.download_single_file(&path, size, recv, bar, total_bar, hash)
+                    self.download_single_file(&path, size, bar, total_bar, hash)
                         .await?;
                 }
                 FileOrDir::Dir { sub, .. } => {
-                    self.download_directory(&path, sub, recv, bar, total_bar)
-                        .await?;
+                    self.download_directory(&path, sub, bar, total_bar).await?;
                 }
             }
         }
@@ -462,10 +445,10 @@ pub async fn receive_files(
 
     let file_meta = server.receive_file_meta().await?;
     if server.accept_files(&file_meta) {
-        send_packet(ServerPacket::AcceptFiles, &mut server.send).await?;
+        send_packet(ServerPacket::AcceptFiles, &server.conn).await?;
         server.download_files(&file_meta).await?;
     } else {
-        send_packet(ServerPacket::RejectFiles, &mut server.send).await?;
+        send_packet(ServerPacket::RejectFiles, &server.conn).await?;
     }
 
     server.close().await?;

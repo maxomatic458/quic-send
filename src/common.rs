@@ -1,8 +1,10 @@
 use async_compression::tokio::write::{GzipDecoder, GzipEncoder};
 use bincode::{Decode, Encode};
-use quinn::SendStream;
+
+use quinn::Connection;
+
 use std::io;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 pub type Blake3Hash = [u8; 32];
 
@@ -45,30 +47,40 @@ impl FileOrDir {
 
 pub async fn send_packet<P: Encode + std::fmt::Debug>(
     packet: P,
-    send: &mut SendStream,
+    conn: &Connection,
 ) -> io::Result<()> {
     tracing::debug!("Sending packet: {:?}", packet);
+    let mut send = conn.open_uni().await?;
 
     let data = bincode::encode_to_vec(&packet, bincode::config::standard()).unwrap();
-
     let compressed = compress_gzip(&data).await?;
-    let len = compressed.len() as u64;
-
-    send.write_u64(len).await?;
     send.write_all(&compressed).await?;
+
+    send.flush().await?;
+    send.finish()?;
 
     Ok(())
 }
 
-pub async fn receive_packet<P: Decode + std::fmt::Debug>(
-    recv: &mut quinn::RecvStream,
-) -> io::Result<P> {
-    let len = recv.read_u64().await?;
-    let mut compressed = vec![0; len as usize];
-    recv.read_exact(&mut compressed).await.unwrap();
+pub async fn receive_packet<P: Decode + std::fmt::Debug>(conn: &Connection) -> io::Result<P> {
+    let mut recv = conn.accept_uni().await?;
+    let mut buf = Vec::new();
 
-    let data = decompress_gzip(&compressed).await?;
-    let packet = bincode::decode_from_slice(&data, bincode::config::standard())
+    tracing::debug!("Waiting for packet...");
+
+    loop {
+        let mut data = vec![0; 1024];
+        if let Some(n) = recv.read(&mut data).await? {
+            buf.extend_from_slice(&data[..n]);
+            continue;
+        }
+
+        break;
+    }
+
+    let decompressed = decompress_gzip(&buf).await?;
+
+    let packet = bincode::decode_from_slice(&decompressed, bincode::config::standard())
         .unwrap()
         .0;
 

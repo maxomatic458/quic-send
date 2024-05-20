@@ -1,5 +1,9 @@
 use async_compression::tokio::write::GzipEncoder;
 use async_recursion::async_recursion;
+use rustls::{
+    crypto,
+    pki_types::{CertificateDer, ServerName, UnixTime},
+};
 use std::{
     net::{SocketAddr, UdpSocket},
     path::{Path, PathBuf},
@@ -9,7 +13,7 @@ use std::{
 use indicatif::ProgressBar;
 use quinn::{
     crypto::rustls::QuicClientConfig, default_runtime, ClientConfig, Connection, Endpoint,
-    EndpointConfig, RecvStream, SendStream,
+    EndpointConfig,
 };
 use std::io;
 use thiserror::Error;
@@ -50,10 +54,6 @@ pub enum SendError {
 pub struct Sender {
     /// Arguments
     pub args: SenderArgs,
-    /// The channel to send packets
-    pub send: SendStream,
-    /// The channel to receive packets
-    pub recv: RecvStream,
     /// Connection
     pub conn: Connection,
     /// Client endpoint
@@ -82,18 +82,15 @@ impl Sender {
         let conn = client.connect(receiver, SERVER_NAME)?.await?;
         tracing::debug!("Client connected to server: {:?}", conn.remote_address());
 
-        let (mut send, mut recv) = conn.accept_bi().await?;
-        recv.read_u8().await?; // Ignore opening byte
-
         send_packet(
             ClientPacket::ConnRequest {
                 version_num: VERSION.to_string(),
             },
-            &mut send,
+            &conn,
         )
         .await?;
 
-        let resp = receive_packet::<ServerPacket>(&mut recv).await?;
+        let resp = receive_packet::<ServerPacket>(&conn).await?;
         match resp {
             ServerPacket::Ok => {}
             ServerPacket::WrongVersion { expected } => {
@@ -105,19 +102,12 @@ impl Sender {
             }
         }
 
-        let client = Self {
-            args,
-            send,
-            recv,
-            conn,
-            client,
-        };
+        let client = Self { args, conn, client };
 
         Ok(client)
     }
 
     pub async fn wait_for_close(&mut self) -> Result<(), SendError> {
-        self.send.finish().ok();
         self.client.wait_idle().await;
         Ok(())
     }
@@ -130,11 +120,11 @@ impl Sender {
             ClientPacket::FileMeta {
                 files: file_meta.to_vec(),
             },
-            &mut self.send,
+            &self.conn,
         )
         .await?;
 
-        let resp = receive_packet::<ServerPacket>(&mut self.recv).await?;
+        let resp = receive_packet::<ServerPacket>(&self.conn).await?;
         match resp {
             ServerPacket::AcceptFiles => Ok(()),
             ServerPacket::RejectFiles => Err(SendError::FilesRejected),
@@ -146,11 +136,7 @@ impl Sender {
     }
 
     pub(crate) async fn upload_files(&mut self, file_meta: &[FileOrDir]) -> Result<(), SendError> {
-        // Open a new Unidirectional stream to send files
         tracing::debug!("Opening file stream");
-        let mut send = self.conn.open_uni().await?;
-        send.write_u8(1).await?; // Opening byte
-        let mut send = GzipEncoder::new(send);
 
         let (bars, total_bar) = progress_bars(file_meta);
 
@@ -159,20 +145,18 @@ impl Sender {
                 self.upload_single_file(
                     file,
                     file.metadata()?.len(),
-                    &mut send,
+                    // &mut send,
                     &bar,
                     total_bar.as_ref(),
                 )
                 .await?;
                 bar.finish();
             } else {
-                self.upload_directory(file, &mut send, &bar, total_bar.as_ref())
+                self.upload_directory(file, &bar, total_bar.as_ref())
                     .await?;
                 bar.finish();
             }
         }
-
-        send.shutdown().await?;
 
         Ok(())
     }
@@ -184,7 +168,7 @@ impl Sender {
         path: &Path,
     ) -> Result<(Option<File>, u64), SendError> {
         let mut bytes_read = 0;
-        let request = receive_packet::<ServerPacket>(&mut self.recv).await?;
+        let request = receive_packet::<ServerPacket>(&self.conn).await?;
 
         let file = match request {
             // Send the whole file
@@ -204,7 +188,7 @@ impl Sender {
                 };
 
                 bytes_read = pos;
-                send_packet(ClientPacket::FilePosHash { hash }, &mut self.send).await?;
+                send_packet(ClientPacket::FilePosHash { hash }, &self.conn).await?;
 
                 file.seek(io::SeekFrom::Start(pos)).await?;
                 Some(file)
@@ -222,16 +206,21 @@ impl Sender {
         &mut self,
         path: &Path,
         size: u64,
-        send: &mut GzipEncoder<SendStream>,
         bar: &ProgressBar,
         total_bar: Option<&ProgressBar>,
     ) -> Result<(), SendError> {
-        tracing::debug!("Uploading file: {:?}", path);
+        tracing::debug!("Uploading file: {:?} size: {}", path, size);
+
+        let mut send = self.conn.open_uni().await?;
+        send.write_u8(1).await?; // Opening byte
+
+        let mut send = GzipEncoder::new(&mut send);
 
         let (mut file, mut bytes_read) =
             if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
                 (file, bytes_read)
             } else {
+                tracing::info!("Skipping file: {:?}", path);
                 return Ok(());
             };
 
@@ -256,6 +245,9 @@ impl Sender {
             }
         }
 
+        send.write_u8(1).await?; // Prevent sending nothing, which can cause issues
+
+        send.shutdown().await?;
         file.shutdown().await?;
 
         tracing::debug!("Finished uploading file: {:?}", path);
@@ -267,7 +259,6 @@ impl Sender {
     async fn upload_directory(
         &mut self,
         dir: &Path,
-        send: &mut GzipEncoder<SendStream>,
         bar: &ProgressBar,
         total_bar: Option<&ProgressBar>,
     ) -> Result<(), SendError> {
@@ -276,10 +267,10 @@ impl Sender {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                self.upload_single_file(&path, path.metadata()?.len(), send, bar, total_bar)
+                self.upload_single_file(&path, path.metadata()?.len(), bar, total_bar)
                     .await?;
             } else {
-                self.upload_directory(&path, send, bar, total_bar).await?;
+                self.upload_directory(&path, bar, total_bar).await?;
             }
         }
 
@@ -348,18 +339,15 @@ pub async fn send_files(
 }
 
 fn client_config() -> ClientConfig {
-    // let crypto = rustls::ClientConfig::builder()
-    //     .with_safe_defaults()
-    //     .with_custom_certificate_verifier(SkipServerVerification::new())
-    //     .with_no_client_auth();
-
     let mut binding = rustls::ClientConfig::builder()
         .with_root_certificates(rustls::RootCertStore::empty())
         .with_no_client_auth();
 
     let mut crypto = binding.dangerous();
 
-    crypto.set_certificate_verifier(SkipServerVerification::new());
+    crypto.set_certificate_verifier(SkipServerVerification::new(Arc::new(
+        crypto::aws_lc_rs::default_provider(),
+    )));
 
     ClientConfig::new(Arc::new(
         QuicClientConfig::try_from(crypto.cfg.to_owned()).unwrap(),
@@ -368,54 +356,58 @@ fn client_config() -> ClientConfig {
 
 /// Implementation of `ServerCertVerifier` that verifies everything as trustworthy.
 /// https://quinn-rs.github.io/quinn/quinn/certificate.html
+/// Dummy certificate verifier that treats any certificate as valid.
+/// NOTE, such verification is vulnerable to MITM attacks, but convenient for testing.
 #[derive(Debug)]
-struct SkipServerVerification;
+struct SkipServerVerification(Arc<rustls::crypto::CryptoProvider>);
 
 impl SkipServerVerification {
-    fn new() -> Arc<Self> {
-        Arc::new(Self)
+    fn new(provider: Arc<rustls::crypto::CryptoProvider>) -> Arc<Self> {
+        Arc::new(Self(provider))
     }
 }
 
 impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     fn verify_server_cert(
         &self,
-        _end_entity: &rustls::pki_types::CertificateDer<'_>,
-        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
-        _server_name: &rustls::pki_types::ServerName<'_>,
-        _ocsp_response: &[u8],
-        _now: rustls::pki_types::UnixTime,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp: &[u8],
+        _now: UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
         Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
     }
 
     fn verify_tls13_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        vec![
-            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
-            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-            rustls::SignatureScheme::ED25519,
-            rustls::SignatureScheme::RSA_PSS_SHA512,
-            rustls::SignatureScheme::RSA_PKCS1_SHA256,
-            rustls::SignatureScheme::RSA_PKCS1_SHA384,
-            rustls::SignatureScheme::RSA_PKCS1_SHA512,
-        ]
+        self.0.signature_verification_algorithms.supported_schemes()
     }
 }
