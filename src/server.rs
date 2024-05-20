@@ -356,12 +356,12 @@ impl Receiver {
             .handle_save_mode(file_path, hasher.as_mut(), self.args.save_mode)
             .await?
         {
-            if bytes_written > 0 {
-                tracing::info!("Resuming file: {:?}", file_path);
-            }
+            // if bytes_written > 0 {
+            //     // tracing::info!("Resuming file: {:?}", file_path);
+            // }
             (file, bytes_written)
         } else {
-            tracing::info!("Skipping file: {:?}", file_path);
+            // tracing::info!("Skipping file: {:?}", file_path);
             return Ok(());
         };
 
