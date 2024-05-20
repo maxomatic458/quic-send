@@ -17,7 +17,7 @@ color-eyre = "0.6.3"
 async-compression = { version = "0.4.10", features = ["tokio", "gzip"] }
 quinn = { version = "0.11.0", features = ["runtime-tokio"] }
 stunclient = "0.4.0"
-rustls = { version = "0.23.0", features = ["ring"] }
+rustls = { version = "0.23.0", default_features = false, features = ["ring"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 thiserror = "1.0.60"
