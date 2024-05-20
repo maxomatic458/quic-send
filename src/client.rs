@@ -346,7 +346,7 @@ fn client_config() -> ClientConfig {
     let mut crypto = binding.dangerous();
 
     crypto.set_certificate_verifier(SkipServerVerification::new(Arc::new(
-        crypto::aws_lc_rs::default_provider(),
+        crypto::ring::default_provider(),
     )));
 
     ClientConfig::new(Arc::new(
