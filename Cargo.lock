@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "quic-send"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-compression",
  "async-recursion",
