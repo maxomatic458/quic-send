@@ -135,6 +135,11 @@ async fn main() -> color_eyre::Result<()> {
                 save_mode: SaveMode::from_flags(overwrite, resume, per_file),
             };
             server::receive_files(socket, other, args).await?;
+            #[cfg(feature = "toast-notifications")]
+            {
+                use utils::notify;
+                notify("quic-send", "Transfer complete");
+            }
         }
     };
 

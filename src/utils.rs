@@ -78,7 +78,7 @@ pub fn external_addr(
 pub fn hole_punch(socket: &UdpSocket, remote: SocketAddr) -> io::Result<()> {
     tracing::debug!("Punching hole to {}", remote);
     // TODO: Make this more reliable
-    socket.send_to(&[0], remote)?;
+    socket.send_to(&[1], remote)?;
 
     Ok(())
 }
@@ -165,4 +165,11 @@ pub async fn update_hasher(hasher: &mut Hasher, file: &mut File) -> io::Result<(
         hasher.update(&buf[..n]);
     }
     Ok(())
+}
+
+#[cfg(feature = "toast-notifications")]
+pub fn notify(title: &str, message: &str) {
+    use notify_rust::Notification;
+
+    Notification::new().summary(title).body(message).show().ok();
 }

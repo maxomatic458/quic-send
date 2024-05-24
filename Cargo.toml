@@ -25,6 +25,11 @@ async-recursion = "1.1.1"
 blake3 = "1.5.1"
 pretty_assertions = "1.4.0"
 serial_test = "3.1.1"
+notify-rust = { version = "4.11.0", optional = true }
+
+[features]
+default = ["toast-notifications"]
+toast-notifications = ["notify-rust"]
 
 [profile.release]
 lto = true
