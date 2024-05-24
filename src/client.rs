@@ -215,12 +215,8 @@ impl Sender {
 
         let (mut file, mut bytes_read) =
             if let (Some(file), bytes_read) = self.handle_receiver_save_mode(path).await? {
-                // if bytes_read > 0 {
-                //     tracing::info!("Resuming file: {:?}", path);
-                // }
                 (file, bytes_read)
             } else {
-                // tracing::info!("Skipping file: {:?}", path);
                 return Ok(());
             };
 
