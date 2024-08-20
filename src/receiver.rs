@@ -131,7 +131,7 @@ impl Receiver {
         bar: &ProgressBar,
         total_bar: Option<&ProgressBar>,
     ) -> Result<(), ReceiveError> {
-        tracing::debug!("receving file: {:?}", path);
+        tracing::debug!("receiving file: {:?}", path);
 
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)
