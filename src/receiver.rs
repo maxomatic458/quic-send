@@ -105,7 +105,12 @@ impl Receiver {
             let size_human_bytes = HumanBytes(size).to_string();
             let name = file.name();
 
-            println!("- {:<width$} {:>10},", name, size_human_bytes, width = longest_name); 
+            println!(
+                "- {:<width$} {:>10},",
+                name,
+                size_human_bytes,
+                width = longest_name
+            );
         }
 
         println!("\nTotal size: {}", HumanBytes(total_size));

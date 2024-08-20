@@ -389,16 +389,18 @@ mod tests {
             name: "root".to_string(),
             files: vec![FileRecvSendTree::Dir {
                 name: "dir1".to_string(),
-                files: vec![FileRecvSendTree::File {
-                    name: "file2".to_string(),
-                    skip: 15,
-                    size: 20,
-                },
-                FileRecvSendTree::File {
-                    name: "file3".to_string(),
-                    skip: 0,
-                    size: 30,
-                }],
+                files: vec![
+                    FileRecvSendTree::File {
+                        name: "file2".to_string(),
+                        skip: 15,
+                        size: 20,
+                    },
+                    FileRecvSendTree::File {
+                        name: "file3".to_string(),
+                        skip: 0,
+                        size: 30,
+                    },
+                ],
             }],
         };
 
