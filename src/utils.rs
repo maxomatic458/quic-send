@@ -1,5 +1,3 @@
-use blake3::Hasher;
-use clap::ValueEnum;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
@@ -9,48 +7,10 @@ use rustls::pki_types::PrivateKeyDer;
 use std::io;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
-use std::path::Path;
+use std::time::Duration;
 use stunclient::StunClient;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 
-use crate::common::Blake3Hash;
-use crate::common::FileOrDir;
-use crate::HASH_BUF_SIZE;
-
-#[derive(Debug, Clone, ValueEnum)]
-pub enum LogLevel {
-    Trace,
-    Debug,
-    Info,
-    Warn,
-    Error,
-}
-
-impl LogLevel {
-    pub fn to_tracing_level(&self) -> tracing::Level {
-        match self {
-            Self::Trace => tracing::Level::TRACE,
-            Self::Debug => tracing::Level::DEBUG,
-            Self::Info => tracing::Level::INFO,
-            Self::Warn => tracing::Level::WARN,
-            Self::Error => tracing::Level::ERROR,
-        }
-    }
-}
-
-impl From<&str> for LogLevel {
-    fn from(s: &str) -> Self {
-        match s {
-            "trace" => Self::Trace,
-            "debug" => Self::Debug,
-            "info" => Self::Info,
-            "warn" => Self::Warn,
-            "error" => Self::Error,
-            _ => Self::Info,
-        }
-    }
-}
+use crate::common::FileRecvSendTree;
 
 /// Generate a self signed certificate and private key
 pub fn self_signed_cert() -> Result<(CertificateDer<'static>, PrivateKeyDer<'static>), rcgen::Error>
@@ -77,14 +37,56 @@ pub fn external_addr(
 /// Perform a UDP hole punch to the remote address
 pub fn hole_punch(socket: &UdpSocket, remote: SocketAddr) -> io::Result<()> {
     tracing::debug!("Punching hole to {}", remote);
-    // TODO: Make this more reliable
-    socket.send_to(&[1], remote)?;
+
+    socket.connect(remote)?;
+
+    const MSG: &[u8] = &[1];
+    const ACK: &[u8] = &[2];
+
+    let mut hole_punched = false;
+    let timeout = Duration::from_secs(1);
+
+    const MAX_HOLEPUNCH_TRIES: u8 = 5;
+    let mut retries = 0;
+
+    let mut buf = [0; 1];
+
+    while !hole_punched && retries < MAX_HOLEPUNCH_TRIES {
+        socket.send(MSG)?;
+        socket.set_read_timeout(Some(timeout))?;
+
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            if let Ok((n, _)) = socket.recv_from(&mut buf) {
+                if n != 1 {
+                    continue;
+                }
+
+                if buf == MSG {
+                    socket.send(ACK)?;
+                    break;
+                }
+
+                if buf == ACK {
+                    hole_punched = true;
+                    break;
+                }
+            }
+        }
+
+        if !hole_punched {
+            retries += 1;
+            tracing::debug!("Retrying hole punch, attempt {}", retries);
+        }
+    }
 
     Ok(())
 }
 
-/// Progress bars for uploading/downloading files
-pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressBar>) {
+pub fn progress_bars(
+    offered_files: &[FileRecvSendTree],
+    skipped: &[u64],
+) -> (Vec<ProgressBar>, Option<ProgressBar>) {
     let total_name = "Total";
 
     let style = ProgressStyle::default_bar()
@@ -99,77 +101,48 @@ pub fn progress_bars(files: &[FileOrDir]) -> (Vec<ProgressBar>, Option<ProgressB
         .unwrap()
         .progress_chars("##-");
 
-    let longest_name = files.iter().map(|f| f.name().len()).max().unwrap_or(0);
-    let total_size = files.iter().map(FileOrDir::size).sum::<u64>();
+    let longest_name = offered_files
+        .iter()
+        .map(|f| f.name().len())
+        .max()
+        .unwrap_or(0);
+    let total_size = offered_files
+        .iter()
+        .map(FileRecvSendTree::size)
+        .sum::<u64>();
+    let total_skip = skipped.iter().sum::<u64>();
 
     let mp = MultiProgress::new();
 
-    let mut bars = Vec::new();
-    for file in files {
+    let mut bars = vec![];
+
+    for (file, skipped) in offered_files.iter().zip(skipped.iter()) {
         let name = format!("{:width$}", file.name(), width = longest_name);
-        let bar = mp.add(ProgressBar::new(file.size()));
+        let bar = mp.add(ProgressBar::new(file.size()).with_position(*skipped));
         bar.set_style(style.clone());
         bar.set_prefix(name);
         bars.push(bar);
     }
 
     let total_bar = if bars.len() > 1 {
+        // let total_name = format!("{:width$}", total_name, width = longest_name);
+        // let pb = ProgressBar::new(total_size);
+        // // pb.inc(total_skip);
+        // pb.set_style(total_style);
+        // pb.set_prefix(total_name);
+        // let bar = mp.add(pb.with_position(total_skip));
+        // Some(bar)
+
         let total_name = format!("{:width$}", total_name, width = longest_name);
-        let bar = mp.add(ProgressBar::new(total_size));
-        bar.set_style(total_style);
-        bar.set_prefix(total_name);
+        let pb = ProgressBar::new(total_size);
+        pb.set_style(total_style);
+        pb.set_prefix(total_name);
+        pb.set_position(total_skip);
+        let bar = mp.add(pb);
         Some(bar)
     } else {
         None
     };
 
     (bars, total_bar)
-}
-
-pub async fn blake3_from_path(path: &Path) -> io::Result<Blake3Hash> {
-    let mut file = File::open(path).await?;
-    let end = file.metadata().await?.len();
-
-    blake3_from_file(&mut file, end).await
-}
-
-/// Calculate the blake3 hash of a file
-pub async fn blake3_from_file(file: &mut File, end: u64) -> io::Result<Blake3Hash> {
-    let mut hasher = Hasher::new();
-    let mut buf = vec![0; HASH_BUF_SIZE];
-    let mut pos = 0;
-
-    while pos <= end {
-        let to_read = std::cmp::min(HASH_BUF_SIZE as u64, end - pos);
-        // tracing::info!("Hashing: {} / {}", pos, end);
-        let n = file.read(&mut buf[..to_read as usize]).await?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-        pos += n as u64;
-    }
-    let hash = hasher.finalize().into();
-    Ok(hash)
-}
-
-/// Update a hasher with the contents of a file,
-/// this is for continuing interrupted downloads
-pub async fn update_hasher(hasher: &mut Hasher, file: &mut File) -> io::Result<()> {
-    let mut buf = vec![0; HASH_BUF_SIZE];
-    loop {
-        let n = file.read(&mut buf).await?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(())
-}
-
-#[cfg(feature = "toast-notifications")]
-pub fn notify(title: &str, message: &str) {
-    use notify_rust::Notification;
-
-    Notification::new().summary(title).body(message).show().ok();
 }
