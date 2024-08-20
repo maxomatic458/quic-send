@@ -364,7 +364,7 @@ mod tests {
             ],
         };
 
-        let to_skip = get_files_to_skip_tree(&to_send, &already_installed).unwrap();
+        let to_skip = get_files_to_skip_tree(&already_installed, &to_send).unwrap();
         assert_eq!(
             to_skip,
             FilesToSkip::Dir {
@@ -393,6 +393,11 @@ mod tests {
                     name: "file2".to_string(),
                     skip: 15,
                     size: 20,
+                },
+                FileRecvSendTree::File {
+                    name: "file3".to_string(),
+                    skip: 0,
+                    size: 30,
                 }],
             }],
         };
