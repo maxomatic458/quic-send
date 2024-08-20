@@ -185,7 +185,7 @@ impl Receiver {
         tracing::debug!("receiving directory: {:?}", path);
 
         for file in files {
-            let path = path.join(&file.name());
+            let path = path.join(file.name());
             match file {
                 FileRecvSendTree::File { size, skip, .. } => {
                     self.download_file(recv, &path, *skip, *size, bar, total_bar)

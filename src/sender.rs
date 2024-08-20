@@ -147,7 +147,7 @@ impl Sender {
         tracing::debug!("sending directory: {:?}", path);
 
         for file in files {
-            let path = path.join(&file.name());
+            let path = path.join(file.name());
             match file {
                 FileRecvSendTree::File { size, skip, .. } => {
                     self.upload_file(send, &path, *skip, *size, bar, total_bar)
