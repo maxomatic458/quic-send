@@ -28,9 +28,6 @@ enum AppError {
     WrongVersion(String, String),
 }
 
-// This is the backend roundezvous server
-// it will let the sender and receiver connect, and exchange their IPs
-
 const BIND_PORT: u16 = 9090;
 const BIND_IP: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 const CODE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
