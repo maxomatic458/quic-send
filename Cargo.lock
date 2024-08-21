@@ -744,6 +744,7 @@ version = "0.2.1"
 dependencies = [
  "async-compression",
  "bincode",
+ "clap",
  "pretty_assertions",
  "quinn",
  "rcgen",
@@ -759,6 +760,7 @@ name = "qs-roundezvous"
 version = "0.2.1"
 dependencies = [
  "bincode",
+ "clap",
  "qs-core",
  "quinn",
  "rand",

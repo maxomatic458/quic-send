@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     sync::{atomic::AtomicU64, Arc},
     time,
 };
 
+use clap::Parser;
 use qs_core::{
     common::{receive_packet, send_packet},
     packets::{RoundezvousFromServer, RoundezvousToServer},
@@ -29,21 +30,42 @@ enum AppError {
 }
 
 const BIND_PORT: u16 = 9090;
-const BIND_IP: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 const CODE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const MAX_CONNECTION_AGE: u64 = 60;
+
+#[derive(Parser, Debug)]
+#[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
+struct Args {
+    /// Log level
+    #[clap(long, short, default_value = "info")]
+    log_level: tracing::Level,
+    /// Port
+    #[clap(long, short, default_value_t = BIND_PORT)]
+    port: u16,
+    /// bind ip
+    #[clap(long, short, default_value = "0.0.0.0")]
+    bind_ip: String,
+    /// Max connection age
+    #[clap(long, short, default_value_t = MAX_CONNECTION_AGE)]
+    max_connection_age: u64,
+}
 
 struct AppState {
     /// Keep track of the connections awaiting exchange
     awaiting_exchange: RwLock<HashMap<[u8; CODE_LEN], (Connection, SocketAddr, u64)>>,
+    /// Counter for the connections
     counter: Arc<AtomicU64>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    tracing_subscriber::fmt::init();
+    let args: Args = Args::parse();
 
-    let addr = SocketAddr::new(BIND_IP, BIND_PORT);
+    tracing_subscriber::fmt()
+        .with_max_level(args.log_level)
+        .init();
+
+    let addr = SocketAddr::new(args.bind_ip.parse().unwrap(), args.port);
     let endpoint = quinn::Endpoint::server(server_config(), addr)?;
 
     let state = Arc::new(AppState {
