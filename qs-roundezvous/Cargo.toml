@@ -12,6 +12,7 @@ thiserror = { workspace = true }
 bincode = { workspace = true }
 rand = { workspace = true }
 qs-core = { path = "../qs-core" }
+clap = { version = "4.5.16", features = ["derive"] }
 # rustls = { workspace = true }
 # rcgen = { workspace = true }
 
