@@ -1,0 +1,18 @@
+[package]
+name = "qs-core"
+version = "0.2.1"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+quinn = { workspace = true }
+rustls = { workspace = true }
+rcgen = { workspace = true }
+bincode = { workspace = true }
+async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
+stunclient = "0.4.0"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

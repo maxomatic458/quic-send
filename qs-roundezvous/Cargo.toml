@@ -1,0 +1,20 @@
+[package]
+name = "qs-roundezvous"
+version = "0.2.1"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+quinn = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+bincode = { workspace = true }
+rand = { workspace = true }
+qs-core = { path = "../qs-core" }
+# rustls = { workspace = true }
+# rcgen = { workspace = true }
+
+[[bin]]
+path = "src/main.rs"
+name = "qs-server"
