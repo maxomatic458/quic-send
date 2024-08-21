@@ -257,7 +257,9 @@ impl CliProgressBars {
         let total_name = "Total";
 
         let style = ProgressStyle::default_bar()
-            .template("{spinner:.green} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .template(
+                "{spinner:.green} {prefix} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})",
+            )
             .unwrap()
             .progress_chars("#>-");
 
@@ -322,6 +324,10 @@ impl CliProgressBars {
                 .length()
                 .unwrap_or_default()
                 .saturating_sub(pb.position());
+
+            if remaining == 0 {
+                continue;
+            }
 
             let this_bar_progress = progress.min(remaining);
             pb.inc(this_bar_progress);

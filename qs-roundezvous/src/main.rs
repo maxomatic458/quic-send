@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
+    sync::{atomic::AtomicU64, Arc},
     time,
 };
 
@@ -38,7 +38,8 @@ const MAX_CONNECTION_AGE: u64 = 60;
 
 struct AppState {
     /// Keep track of the connections awaiting exchange
-    awaiting_exchange: RwLock<HashMap<[u8; CODE_LEN], (Connection, SocketAddr)>>,
+    awaiting_exchange: RwLock<HashMap<[u8; CODE_LEN], (Connection, SocketAddr, u64)>>,
+    counter: Arc<AtomicU64>,
 }
 
 #[tokio::main]
@@ -50,6 +51,7 @@ async fn main() -> Result<(), AppError> {
 
     let state = Arc::new(AppState {
         awaiting_exchange: RwLock::new(HashMap::new()),
+        counter: Arc::new(AtomicU64::new(0)),
     });
 
     tracing::info!("started roundezvous server on {}", addr);
@@ -70,21 +72,24 @@ async fn handle_connection(conn: Connection, state: Arc<AppState>) -> Result<(),
             validate_version(version, &conn).await?;
 
             let code = generate_code();
+            let conn_id = state
+                .counter
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             send_packet(RoundezvousFromServer::Code { code }, &conn).await?;
             state
                 .awaiting_exchange
                 .write()
                 .await
-                .insert(code, (conn, socket_addr));
+                .insert(code, (conn, socket_addr, conn_id));
 
-            tracing::info!("sender announced itself with code {:?}", code);
+            tracing::info!("new connection {conn_id}, sender announced itself");
 
             // spawn another task to close the connection after the timeout
             tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(MAX_CONNECTION_AGE)).await;
                 let conn = state.awaiting_exchange.write().await.remove(&code);
-                if let Some((conn, _)) = conn {
-                    tracing::info!("closing connection due to timeout");
+                if let Some((conn, _, conn_id)) = conn {
+                    tracing::info!("closing connection {conn_id} due to timeout");
                     conn.close(0u32.into(), b"timeout");
                 }
             });
@@ -96,7 +101,7 @@ async fn handle_connection(conn: Connection, state: Arc<AppState>) -> Result<(),
         } => {
             validate_version(version, &conn).await?;
 
-            let (sender_conn, sender_addr) = state
+            let (sender_conn, sender_addr, conn_id) = state
                 .awaiting_exchange
                 .write()
                 .await
@@ -119,7 +124,7 @@ async fn handle_connection(conn: Connection, state: Arc<AppState>) -> Result<(),
             conn.closed().await;
             sender_conn.closed().await;
 
-            tracing::info!("exchange complete: {:?} <-> {:?}", socket_addr, sender_addr);
+            tracing::info!("exchange complete for connection {conn_id}");
         }
     }
 
