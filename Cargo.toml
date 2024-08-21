@@ -1,35 +1,25 @@
-[package]
-name = "quic-send"
-version = "2.0.0"
-edition = "2021"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = [
+    "qs-core",
+    "qs-cli",
+    "qs-roundezvous"
+]
 
-[dependencies]
-bincode = "=2.0.0-rc.3"
-clap = { version = "4.5.16", features = ["derive"] }
-hex = "0.4.3"
-rcgen = "0.13.1"
-tokio = { version = "1.39.3", features = ["full"] }
-walkdir = "2.5.0"
-indicatif = "0.17.8"
-dialoguer = "0.11.0"
-color-eyre = "0.6.3"
-async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
+resolver = "2"
+
+[workspace.dependencies]
 quinn = { version = "0.11.3", features = ["runtime-tokio"] }
-stunclient = "0.4.0"
 rustls = { version = "0.23.12", default-features = false, features = ["ring"] }
+rcgen = "0.13.1"
+bincode = "=2.0.0-rc.3"
+tokio = { version = "1.37.0", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 thiserror = "1.0.63"
-async-recursion = "1.1.1"
 pretty_assertions = "1.4.0"
-iter_tools = "0.20.0"
+rand = "0.8.5"
 
 [profile.release]
 lto = true
 codegen-units = 1
 strip = "debuginfo"
-
-[[bin]]
-path = "src/main.rs"
-name = "qs"
