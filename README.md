@@ -2,6 +2,8 @@
 
 quic-send is a peer-to-peer file transfer tool that uses the QUIC protocol to transfer data over a direct connection (no relay involved).
 
+![demo](https://github.com/user-attachments/assets/f9c4daf9-dc16-4324-8bae-4de07cd6be0e)
+
 ## Features
 - **P2P Data transfer**: All files are sent over a direct connection, the data is never relayed through another server. The only other parties
 involved is a STUN server (Google STUN) and an optional roundezvous server (included in this repo).
