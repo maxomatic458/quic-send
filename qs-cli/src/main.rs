@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+use colored::Colorize;
+use dialoguer::theme::ColorfulTheme;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use qs_core::{
     common::FilesAvailable,
@@ -13,9 +15,8 @@ use std::{
     rc::Rc,
 };
 use thiserror::Error;
-
 // const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 178, 47)), 9090);
-const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(209, 25, 141, 1)), 1182);
+const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(209, 25, 141, 16)), 1172);
 
 #[derive(Parser, Debug)]
 #[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
@@ -25,13 +26,13 @@ struct Args {
     log_level: tracing::Level,
     /// Direct mode (no rendezvous server)
     #[clap(long, short, default_value = "false", conflicts_with = "server_addr")]
-    pub direct: bool,
+    direct: bool,
     /// Send or receive files
     #[clap(subcommand)]
-    pub mode: Mode,
+    mode: Mode,
     /// override the default roundezvous server address, incompatible with direct mode
     #[clap(long, short, conflicts_with = "direct", default_value_t = DEFAULT_ADDR)]
-    pub server_addr: SocketAddr,
+    server_addr: SocketAddr,
 }
 
 #[derive(Subcommand, Debug)]
@@ -54,6 +55,10 @@ enum Mode {
 
         /// The code to connect to the sender
         code: Option<String>,
+
+        /// Automatically accept the files
+        #[clap(long, short = 'y')]
+        auto_accept: bool,
     },
 }
 
@@ -95,7 +100,7 @@ async fn main() -> Result<(), AppError> {
     let other;
 
     if args.direct {
-        println!("External address: {}", external_addr);
+        println!("External address: {}", external_addr.to_string().green());
 
         other =
             dialoguer::Input::<SocketAddr>::with_theme(&dialoguer::theme::ColorfulTheme::default())
@@ -108,16 +113,20 @@ async fn main() -> Result<(), AppError> {
             Mode::Send { .. } => {
                 other = roundezvous_announce(socket_clone, external_addr, args.server_addr, |c| {
                     let code = String::from_utf8(c.to_vec()).unwrap();
-                    println!("Code: {}\n", code);
+                    println!("code: {}", code.bright_white());
                     println!("on the other peer, run the following command:\n");
                     println!(
-                        "qs {} receive {}",
-                        if args.server_addr != DEFAULT_ADDR {
-                            format!("-s {}", args.server_addr)
-                        } else {
-                            "".to_string()
-                        },
-                        code
+                        "{}",
+                        format!(
+                            "qs {}receive {}\n",
+                            if args.server_addr != DEFAULT_ADDR {
+                                format!("-s {} ", args.server_addr)
+                            } else {
+                                "".to_string()
+                            },
+                            code
+                        )
+                        .yellow()
                     );
                 })
                 .await
@@ -174,7 +183,10 @@ async fn main() -> Result<(), AppError> {
                 .map_err(QuicSendError::Send)?;
         }
         Mode::Receive {
-            overwrite, output, ..
+            overwrite,
+            output,
+            auto_accept,
+            ..
         } => {
             let mut receiver = Receiver::connect(
                 socket,
@@ -192,7 +204,14 @@ async fn main() -> Result<(), AppError> {
                     |initial_progress| {
                         *progress_bars.borrow_mut() = Some(CliProgressBars::new(initial_progress));
                     },
-                    accept_files,
+                    |files_offered| {
+                        if auto_accept {
+                            println!("auto accepting files");
+                            true
+                        } else {
+                            accept_files(files_offered)
+                        }
+                    },
                     &mut |last_received| {
                         if let Some(pb) = &mut *progress_bars.borrow_mut() {
                             pb.update(last_received);
@@ -209,13 +228,14 @@ async fn main() -> Result<(), AppError> {
 
 /// Ask the receiver if they want to accept the files
 fn accept_files(files_offered: &[FilesAvailable]) -> bool {
-    println!("The following files will be received:");
+    println!("The following files will be received:\n");
 
     let longest_name = files_offered
         .iter()
         .map(|f| f.name().len())
         .max()
-        .unwrap_or(0);
+        .unwrap_or(0)
+        + 1;
 
     let total_size = files_offered.iter().map(|f| f.size()).sum::<u64>();
 
@@ -226,15 +246,19 @@ fn accept_files(files_offered: &[FilesAvailable]) -> bool {
 
         println!(
             " - {:<width$} {:>10}",
-            name,
-            size_human_bytes,
+            if let FilesAvailable::Dir { .. } = file {
+                format!("{}/", name).blue()
+            } else {
+                format!("{} ", name).blue()
+            },
+            size_human_bytes.red(),
             width = longest_name
         );
     }
 
-    println!("\nTotal size: {}", HumanBytes(total_size));
+    println!("\nTotal size: {}", HumanBytes(total_size).to_string().red());
 
-    dialoguer::Confirm::new()
+    dialoguer::Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt("Do you want to receive these files?")
         .interact()
         .unwrap_or_default()
