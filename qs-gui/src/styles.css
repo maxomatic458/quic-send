@@ -1,0 +1,179 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 22px;
+  line-height: 24px;
+  font-weight: 400;
+  
+  --color-primary: #f6f6f6; 
+  --main-page-send-active-color: #e1e1e1;
+  --text-color: #464646;
+  --receive-files-color: #00c6ee;
+  --middle-text-send-active-color: #0bbc1d;
+  --main-page-send-active-border-color: #8b8b8b;
+
+  background-color: var(--color-primary);
+  color: var(--text-color);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  margin: 0;
+  padding: 0;
+
+  border: 0;
+  /* overflow: hidden; */
+}
+
+* {
+  margin: 1px;
+}
+
+.main-page {
+  height:100vh;
+  display: flex;
+  align-items:center;
+  border: 5px solid transparent;
+}
+
+.main-page-active {
+  /* we make the background darker and we add a line dotted border */
+  background: var(--main-page-send-active-color);
+  /* make the border fade in */
+  border: 4px dashed var(--main-page-send-active-border-color);
+  transition: all 0.5s;
+
+}
+
+.send-field {
+  /* send field contains two dives, they should be centered above eachother */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  /* transform: translateY(50%); */
+
+  /* margin-left: auto; */
+  /* margin-right: auto; */
+
+  /* margin: 0; */
+  /* position: absolute; */
+  /* top: 50%; */
+  /* left: 50%; */
+  /* -ms-transform: translate(-50%, -50%); */
+  /* transform: translate(-50%, -50%); */
+
+  margin: 0 auto;
+  overflow: auto;
+  /* vertically center */
+
+  /* margin-top: 50%; */
+
+
+  /* background: red; */
+} 
+
+.upload-icon {
+  margin-bottom: 15px;
+  scale: 1.5;
+}
+
+.send-text {
+  font-weight: bold;
+}
+
+.send-field-active {
+  transition: all 0.5s;
+
+  /* transform: scale(1.2); */
+  color: var(--middle-text-send-active-color);
+}
+
+.receive-button-container {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  -ms-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+  color: var(--receive-files-color);
+  padding-bottom: 5px;
+  /* background: red; */
+}
+
+.receive-button {
+  color: var(--receive-files-color);
+}
+
+.receive-button::after {
+  content: "";
+  position: absolute;
+  height: 3px;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--receive-files-color);
+  color: var(--receive-files-color);
+  transition: width 0.2s;
+}
+
+.receive-button:hover::after {
+  width: 100%;
+}
+
+.files-to-send-list-inner {
+  /* overflow:scroll */
+}
+
+/*  */
+.file-to-send {
+  background: rgb(216, 217, 218);
+  border-radius: 5px;
+  margin: 5px;
+  position: relative;
+  height: 2.6rem;
+}
+
+.file-to-send-icon {
+  /* the icon should be to the left of the file element, centered */
+  /* background: yellow; */
+  position: absolute;
+  
+  scale: 1.2;
+
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: 4px;
+  
+  margin-left: 15px;
+}
+
+.file-to-send-name {
+  /* the name should be to the right of the icon  */
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 2rem;
+}
+
+.file-to-send-delete {
+  /* the delete button should be to the right of the file element, centered */
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: 3px;
+  margin-right: 15px;
+}
+
+
+
+a {
+  /* color: var(--text-color); */
+  text-decoration: none;
+}
+
+
