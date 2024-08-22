@@ -1,20 +1,42 @@
 # quic-send
-A peer-to-peer file sharing application based on QUIC (using the [quinn](https://crates.io/crates/quinn) crate).
-You can send files and folders over a direct connection (no relay server involved) to another peer.
 
-Because no third party (except the STUN request) is involved, if the holepunch fails, a connection will not be established. But since QUIC is UDP based, the holepunch should work for most networks.
+quic-send is a peer-to-peer file transfer tool that uses the QUIC protocol to transfer data over a direct connection (no relay involved).
 
-It might be required to run the program with escalated priviliages.
+## Features
+- **P2P Data transfer**: All files are sent over a direct connection, the data is never relayed through another server. The only other parties
+involved is a STUN server (Google STUN) and an optional roundezvous server (included in this repo).
+- **Encryption**: quic-send uses the encryption provided by the [quinn](https://crates.io/crates/quinn) crate (which uses [rustls](https://crates.io/crates/rustls) and [ring](https://crates.io/crates/ring) under the hood).
+- **Resumable transfers**: If the connection is lost, the transfer can be resumed from where it left off.
+- **Transfer files & Folders**
+- **No port forwarding required**: quic-send makes use of [UDP hole punching](https://en.wikipedia.org/wiki/UDP_hole_punching) to establish a connection between the two peers, without requiring open ports.
 
 ## Usage
-Sender:
-```bash
-qs send file1.txt file2.txt folder1/
+
+### Sending files
+
+```
+$ qs send <file/folder>
+code: 123456
+on the other peer, run the following command:
+
+qs receive 123456
 ```
 
-Receiver:
-```bash
-qs receive
+### Receiving files
+
+```
+$ qs receive 123456
 ```
 
-On both sides you will be presented with a IP address and port number (this is your external IP and Port obtained via STUN). Share this IP with the other peer, enter it in the program and you will be connected.
+
+## Comparison with other file transfer tools
+| Feature | quic-send | [Magic Wormhole](https://github.com/magic-wormhole/magic-wormhole) | [croc](https://github.com/schollz/croc) |
+|---------|-----------|--------------------------------------------------------------------|-----------------------------------------|
+| Encryption | ✅ | ✅ | ✅ |
+| Direct (P2P) transfer  | ✅ | (✅)* | ❌ |
+| Resumable transfers | ✅ | ❌ | ✅ |
+| Transfer files & Folders | ✅ | ✅ | ✅ |
+| (fallback) Relay server | ❌ | ✅ | ✅ |
+
+
+* While it is possible in Magic Wormhole, establishing a direct connection is very unlikely (as the connection tries to establish a direct TCP connection), quick send uses UDP hole punching instead which is way more reliable and works for most networks.
