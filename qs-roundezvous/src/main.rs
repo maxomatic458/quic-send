@@ -32,6 +32,7 @@ enum AppError {
 const BIND_PORT: u16 = 9090;
 const CODE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const MAX_CONNECTION_AGE: u64 = 60;
+const MAX_CONCURRENT_CONNECTIONS: usize = 1_000;
 
 #[derive(Parser, Debug)]
 #[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
@@ -43,11 +44,14 @@ struct Args {
     #[clap(long, short, default_value_t = BIND_PORT)]
     port: u16,
     /// bind ip
-    #[clap(long, short, default_value = "0.0.0.0")]
+    #[clap(long, short = 's', default_value = "0.0.0.0")]
     bind_ip: String,
     /// Max connection age
     #[clap(long, short, default_value_t = MAX_CONNECTION_AGE)]
     max_connection_age: u64,
+    /// Max concurrent connections
+    #[clap(long, short = 'c', default_value_t = MAX_CONCURRENT_CONNECTIONS)]
+    max_concurrent_connections: usize,
 }
 
 struct AppState {
@@ -77,6 +81,10 @@ async fn main() -> Result<(), AppError> {
 
     loop {
         if let Some(conn) = endpoint.accept().await {
+            if state.awaiting_exchange.read().await.len() >= args.max_concurrent_connections {
+                tracing::warn!("max concurrent connections reached, dropping connection");
+                continue;
+            }
             tokio::spawn(handle_connection(conn.await?, state.clone()));
         }
     }
