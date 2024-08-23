@@ -85,7 +85,15 @@ async fn main() -> Result<(), AppError> {
                 tracing::warn!("max concurrent connections reached, dropping connection");
                 continue;
             }
-            tokio::spawn(handle_connection(conn.await?, state.clone()));
+
+            match conn.await {
+                Ok(conn) => {
+                    tokio::spawn(handle_connection(conn, state.clone()));
+                }
+                Err(e) => {
+                    tracing::warn!("error accepting connection: {:?}", e);
+                }
+            }
         }
     }
 }
