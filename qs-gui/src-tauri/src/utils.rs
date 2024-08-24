@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[tauri::command(async)]
 pub async fn get_file_size_and_is_dir(path: &Path) -> Result<(u64, bool), String> {
@@ -6,4 +6,3 @@ pub async fn get_file_size_and_is_dir(path: &Path) -> Result<(u64, bool), String
     let metadata = tokio::fs::metadata(path).await.map_err(|e| e.to_string())?;
     Ok((metadata.len(), metadata.is_dir()))
 }
-

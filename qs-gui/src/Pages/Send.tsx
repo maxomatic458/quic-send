@@ -11,7 +11,7 @@ function Send() {
     const [filesToSend, setFilesToSend] = createSignal<string[]>([]);
     // extract the first files from the query string
     const urlParams = new URLSearchParams(window.location.search);
-    const file = urlParams.get('files');
+    const file = urlParams.get("files");
 
     if (file) {
         const files = JSON.parse(file);
@@ -22,12 +22,20 @@ function Send() {
 
     return (
         <div>
-            <div class="send-header">
-                <a href="/" class="back-button">Back</a>
-                <div class="files-to-send-text">Files to Send</div>
+            <div class="send-upper-container">
+                <div class="files-to-send-text">Files to send</div>
+                <div class="files-to-send-list-container">
+                    <div class="files-to-send-list">
+                        <FilesToSendList initialFilePaths={filesToSend()} />
+                    </div>
+                </div>
             </div>
-            <div class="files-to-send-list"> 
-                <FilesToSendList initialFilePaths={filesToSend()} />
+            <div class="send-button-container-outer">
+                <div class="send-button-container">
+                    <a href="/send/sending" class="send-button">
+                        Send
+                    </a>
+                </div>
             </div>
         </div>
     );

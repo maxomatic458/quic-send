@@ -6,18 +6,16 @@ use qs_core::{
     common::FilesAvailable,
     receive::{roundezvous_connect, ReceiveError, Receiver, ReceiverArgs},
     send::{roundezvous_announce, SendError, Sender, SenderArgs},
-    utils, QuicSendError, CODE_LEN, STUN_SERVER, VERSION,
+    utils, QuicSendError, CODE_LEN, DEFAULT_ADDR, STUN_SERVER, VERSION,
 };
 use std::{
     cell::RefCell,
     io::{self, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
+    net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
     path::PathBuf,
     rc::Rc,
 };
 use thiserror::Error;
-// const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 178, 47)), 9090);
-const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(209, 25, 141, 16)), 1172);
 
 #[derive(Parser, Debug)]
 #[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
