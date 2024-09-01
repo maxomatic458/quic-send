@@ -3,7 +3,10 @@ use rustls::{
     crypto,
     pki_types::{CertificateDer, ServerName, UnixTime},
 };
-use std::sync::Arc;
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 use thiserror::Error;
 
 pub mod common;
@@ -18,7 +21,11 @@ pub const SEND_SERVER_NAME: &str = "quic-send";
 pub const ROUNDEZVOUS_SERVER_NAME: &str = "quic-roundezvous";
 pub const KEEP_ALIVE_INTERVAL_SECS: u64 = 5;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
+/// The roundezvous server im hosting is running behind the playit.gg proxy.
+/// the IP should be static, but i should probably get a domain name for it
+pub const DEFAULT_ADDR: SocketAddr =
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(209, 25, 141, 16)), 1172);
+// When changing this also change that in qs-gui/src/Pages/Receive.tsx
 pub const CODE_LEN: usize = 8;
 
 #[derive(Error, Debug)]
