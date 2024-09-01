@@ -2,6 +2,9 @@
 
 quic-send is a peer-to-peer file transfer tool that uses the QUIC protocol to transfer data over a direct connection (no relay involved).
 
+> [!NOTE]
+> Because quic-send uses NAT-traversal, a direct connection might not be possible on every network. 
+
 ![demo](https://github.com/user-attachments/assets/4e3e648e-a3c5-495e-ae0e-4447b2ccfed8)
 
 ## Features
