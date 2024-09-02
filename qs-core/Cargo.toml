@@ -1,6 +1,6 @@
 [package]
 name = "qs-core"
-version = "0.2.1"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -12,6 +12,7 @@ rustls = { workspace = true }
 rcgen = { workspace = true }
 bincode = { workspace = true }
 clap = { workspace = true }
+semver = { workspace = true }
 async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 stunclient = "0.4.0"
 

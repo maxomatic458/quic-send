@@ -271,7 +271,7 @@ pub async fn roundezvous_announce(
 
     send_packet(
         RoundezvousToServer::Announce {
-            version: VERSION.to_string(),
+            version: semver::Version::parse(VERSION).unwrap().into(),
             socket_addr: external_addr,
         },
         &conn,

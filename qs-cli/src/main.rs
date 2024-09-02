@@ -6,7 +6,7 @@ use qs_core::{
     common::FilesAvailable,
     receive::{roundezvous_connect, ReceiveError, Receiver, ReceiverArgs},
     send::{roundezvous_announce, SendError, Sender, SenderArgs},
-    utils, QuicSendError, CODE_LEN, STUN_SERVER, VERSION,
+    utils, QuicSendError, CODE_LEN, STUN_SERVERS, VERSION,
 };
 use std::{
     cell::RefCell,
@@ -91,10 +91,16 @@ async fn main() -> Result<(), AppError> {
 
     let external_addr = utils::external_addr(
         &socket,
-        STUN_SERVER
+        STUN_SERVERS[0]
             .to_socket_addrs()?
             .find(|x| x.is_ipv4())
             .unwrap(),
+        Some(
+            STUN_SERVERS[1]
+                .to_socket_addrs()?
+                .find(|x| x.is_ipv4())
+                .unwrap(),
+        ),
     )
     .map_err(QuicSendError::Stun)?;
 

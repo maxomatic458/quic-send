@@ -13,7 +13,13 @@ pub mod send;
 pub mod utils;
 
 pub const BUF_SIZE: usize = 8192;
-pub const STUN_SERVER: &str = "stun.l.google.com:19302";
+pub const STUN_SERVERS: [&str; 5] = [
+    "stun.l.google.com:19302",
+    "stun1.l.google.com:19302",
+    "stun2.l.google.com:19302",
+    "stun3.l.google.com:19302",
+    "stun4.l.google.com:19302",
+];
 pub const SEND_SERVER_NAME: &str = "quic-send";
 pub const ROUNDEZVOUS_SERVER_NAME: &str = "quic-roundezvous";
 pub const KEEP_ALIVE_INTERVAL_SECS: u64 = 5;
@@ -24,7 +30,7 @@ pub const CODE_LEN: usize = 8;
 #[derive(Error, Debug)]
 pub enum QuicSendError {
     #[error("stun error: {0}")]
-    Stun(#[from] stunclient::Error),
+    Stun(#[from] utils::StunError),
     #[error("rcgen error: {0}")]
     RcGen(#[from] rcgen::Error),
     #[error("send error: {0}")]

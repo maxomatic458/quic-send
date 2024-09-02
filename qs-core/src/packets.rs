@@ -1,10 +1,10 @@
-use std::net::SocketAddr;
-
 use crate::{
     common::{FilesAvailable, FilesToSkip},
+    utils::Version,
     CODE_LEN,
 };
 use bincode::{Decode, Encode};
+use std::net::SocketAddr;
 
 /// All packets send from the sender to the receiver
 #[derive(Debug, Clone, Encode, Decode)]
@@ -34,14 +34,14 @@ pub enum RoundezvousToServer {
     /// Sender announces itself to the roundezvous server
     Announce {
         /// The sender's qs version
-        version: String,
+        version: Version,
         /// The external socket addr of the sender
         socket_addr: SocketAddr,
     },
     /// Receiver connects to the roundezvous server
     Connect {
         /// The receiver's qs version
-        version: String,
+        version: Version,
         /// The external socket addr of the receiver
         socket_addr: SocketAddr,
         /// The code the receiver received from the sender

@@ -1,6 +1,6 @@
 [package]
 name = "qs-roundezvous"
-version = "0.2.1"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -13,8 +13,6 @@ bincode = { workspace = true }
 rand = { workspace = true }
 qs-core = { path = "../qs-core" }
 clap = { version = "4.5.16", features = ["derive"] }
-# rustls = { workspace = true }
-# rcgen = { workspace = true }
 
 [[bin]]
 path = "src/main.rs"

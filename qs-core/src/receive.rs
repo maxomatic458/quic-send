@@ -4,7 +4,7 @@ use crate::{
     common::{get_files_available, receive_packet, send_packet, FileSendRecvTree, FilesAvailable},
     packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
     unsafe_client_config,
-    utils::self_signed_cert,
+    utils::{self_signed_cert, Version},
     BUF_SIZE, CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, ROUNDEZVOUS_SERVER_NAME, VERSION,
 };
 use async_compression::tokio::bufread::GzipDecoder;
@@ -333,7 +333,7 @@ pub async fn roundezvous_connect(
 
     send_packet(
         RoundezvousToServer::Connect {
-            version: VERSION.to_string(),
+            version: Version::from(VERSION),
             socket_addr: external_addr,
             code,
         },

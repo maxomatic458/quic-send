@@ -1,3 +1,4 @@
+use bincode::{Decode, Encode};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
@@ -16,14 +17,38 @@ pub fn self_signed_cert() -> Result<(CertificateDer<'static>, PrivateKeyDer<'sta
     Ok((cert.to_owned(), key.try_into().unwrap()))
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum StunError {
+    #[error("STUN request error: {0}")]
+    StunRequest(#[from] stunclient::Error),
+    #[error("Your NAT type is not supported, you cannot use this program ):")]
+    UnsupportedNatType,
+}
+
 /// Query the external address of the socket using a STUN server
+/// When given 2 STUN servers it will check if the addresses match (no symmetric NAT)
 pub fn external_addr(
     socket: &UdpSocket,
-    stun_addr: SocketAddr,
-) -> Result<SocketAddr, stunclient::Error> {
-    let client = StunClient::new(stun_addr);
+    stun_addr1: SocketAddr,
+    stun_addr2: Option<SocketAddr>,
+) -> Result<SocketAddr, StunError> {
+    let client = StunClient::new(stun_addr1);
+    let external_addr = client
+        .query_external_address(socket)
+        .map_err(StunError::StunRequest)?;
 
-    client.query_external_address(socket)
+    if let Some(stun_addr2) = stun_addr2 {
+        let client = StunClient::new(stun_addr2);
+        let external_addr2 = client
+            .query_external_address(socket)
+            .map_err(StunError::StunRequest)?;
+
+        if external_addr != external_addr2 {
+            return Err(StunError::UnsupportedNatType);
+        }
+    }
+
+    Ok(external_addr)
 }
 
 /// Perform a UDP hole punch to the remote address
@@ -82,4 +107,51 @@ pub fn hash_files(files: FileSendRecvTree) -> u64 {
     let mut hasher = DefaultHasher::new();
     files.hash(&mut hasher);
     hasher.finish()
+}
+
+/// Helper struct to store the version, because [semver::Version] does not implement [Encode] and [Decode]
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct Version {
+    /// The Major version represents the Protocol version used by qs-core & the roundezvous server
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+}
+
+impl Version {
+    pub fn to_semver(&self) -> semver::Version {
+        semver::Version::new(self.major, self.minor, self.patch)
+    }
+
+    pub fn from_semver(version: semver::Version) -> Self {
+        Self {
+            major: version.major,
+            minor: version.minor,
+            patch: version.patch,
+        }
+    }
+
+    /// Check if the major version matches (only this matters for compatibility)
+    pub fn matches_major(&self, other: &Version) -> bool {
+        self.major == other.major
+    }
+}
+
+impl From<&'static str> for Version {
+    fn from(version: &str) -> Self {
+        let version = semver::Version::parse(version).unwrap();
+        Self::from_semver(version)
+    }
+}
+
+impl From<semver::Version> for Version {
+    fn from(version: semver::Version) -> Self {
+        Self::from_semver(version)
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
 }

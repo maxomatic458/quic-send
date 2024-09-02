@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{atomic::AtomicU64, Arc},
     time,
 };
@@ -9,7 +9,7 @@ use clap::Parser;
 use qs_core::{
     common::{receive_packet, send_packet},
     packets::{RoundezvousFromServer, RoundezvousToServer},
-    utils::self_signed_cert,
+    utils::{self_signed_cert, Version},
     CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, VERSION,
 };
 
@@ -26,10 +26,10 @@ enum AppError {
     #[error("invalid code {0:?}")]
     InvalidCode([u8; CODE_LEN]),
     #[error("wrong version, expected {0}, got {1}")]
-    WrongVersion(String, String),
+    WrongVersion(Version, Version),
 }
 
-const BIND_PORT: u16 = 9090;
+const DEFAULT_BIND_PORT: u16 = 9090;
 const CODE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const MAX_CONNECTION_AGE: u64 = 60;
 const MAX_CONCURRENT_CONNECTIONS: usize = 1_000;
@@ -41,11 +41,11 @@ struct Args {
     #[clap(long, short, default_value = "info")]
     log_level: tracing::Level,
     /// Port
-    #[clap(long, short, default_value_t = BIND_PORT)]
+    #[clap(long, short, default_value_t = DEFAULT_BIND_PORT)]
     port: u16,
     /// bind ip
-    #[clap(long, short = 's', default_value = "0.0.0.0")]
-    bind_ip: String,
+    #[clap(long, short = 's', default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    bind_ip: IpAddr,
     /// Max connection age
     #[clap(long, short, default_value_t = MAX_CONNECTION_AGE)]
     max_connection_age: u64,
@@ -69,7 +69,7 @@ async fn main() -> Result<(), AppError> {
         .with_max_level(args.log_level)
         .init();
 
-    let addr = SocketAddr::new(args.bind_ip.parse().unwrap(), args.port);
+    let addr = SocketAddr::new(args.bind_ip, args.port);
     let endpoint = quinn::Endpoint::server(server_config(), addr)?;
 
     let state = Arc::new(AppState {
@@ -166,8 +166,8 @@ async fn handle_connection(conn: Connection, state: Arc<AppState>) -> Result<(),
     Ok(())
 }
 
-async fn validate_version(version: String, conn: &Connection) -> Result<(), AppError> {
-    if version != VERSION {
+async fn validate_version(version: Version, conn: &Connection) -> Result<(), AppError> {
+    if !version.matches_major(&Version::from(VERSION)) {
         send_packet(
             RoundezvousFromServer::WrongVersion {
                 expected: VERSION.to_string(),
@@ -175,7 +175,7 @@ async fn validate_version(version: String, conn: &Connection) -> Result<(), AppE
             conn,
         )
         .await?;
-        Err(AppError::WrongVersion(VERSION.to_string(), version))
+        Err(AppError::WrongVersion(Version::from(VERSION), version))
     } else {
         Ok(())
     }
