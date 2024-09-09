@@ -9,7 +9,8 @@ use std::{
 use crate::{
     common::{get_files_available, receive_packet, send_packet, FileSendRecvTree},
     packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
-    unsafe_client_config, BUF_SIZE, CODE_LEN, ROUNDEZVOUS_SERVER_NAME, SEND_SERVER_NAME, VERSION,
+    unsafe_client_config, BUF_SIZE, CODE_LEN, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION,
+    ROUNDEZVOUS_SERVER_NAME, SEND_SERVER_NAME,
 };
 use async_compression::tokio::write::GzipEncoder;
 use quinn::{default_runtime, Connection, Endpoint, EndpointConfig};
@@ -101,6 +102,10 @@ pub enum SendError {
     Read(#[from] quinn::ReadError),
     #[error("wrong version, the receiver expected: {0}, but got: {1}")]
     WrongVersion(String, String),
+    #[error(
+        "wrong roundezvous protocol version, the roundezvous server expected {0}, but got: {1}"
+    )]
+    WrongRoundezvousVersion(u32, u32),
     #[error("unexpected data packet: {0:?}")]
     UnexpectedDataPacket(ReceiverToSender),
     #[error("unexpected roundezvous data packet: {0:?}")]
@@ -165,7 +170,7 @@ impl Sender {
     ) -> Result<(), SendError> {
         send_packet(
             SenderToReceiver::ConnRequest {
-                version_num: VERSION.to_string(),
+                version_num: QS_VERSION.to_string(),
             },
             &self.conn,
         )
@@ -174,7 +179,7 @@ impl Sender {
         match receive_packet::<ReceiverToSender>(&self.conn).await? {
             ReceiverToSender::Ok => (),
             ReceiverToSender::WrongVersion { expected } => {
-                return Err(SendError::WrongVersion(expected, VERSION.to_string()));
+                return Err(SendError::WrongVersion(expected, QS_VERSION.to_string()));
             }
             p => return Err(SendError::UnexpectedDataPacket(p)),
         }
@@ -271,7 +276,7 @@ pub async fn roundezvous_announce(
 
     send_packet(
         RoundezvousToServer::Announce {
-            version: semver::Version::parse(VERSION).unwrap().into(),
+            version: ROUNDEZVOUS_PROTO_VERSION,
             socket_addr: external_addr,
         },
         &conn,
@@ -281,7 +286,10 @@ pub async fn roundezvous_announce(
     let code = match receive_packet::<RoundezvousFromServer>(&conn).await? {
         RoundezvousFromServer::Code { code } => code,
         RoundezvousFromServer::WrongVersion { expected } => {
-            return Err(SendError::WrongVersion(expected, VERSION.to_string()))
+            return Err(SendError::WrongRoundezvousVersion(
+                expected,
+                ROUNDEZVOUS_PROTO_VERSION,
+            ))
         }
         p => return Err(SendError::UnexpectedRoundezvousDataPacket(p)),
     };
@@ -293,8 +301,9 @@ pub async fn roundezvous_announce(
         p => return Err(SendError::UnexpectedRoundezvousDataPacket(p)),
     };
 
-    conn.close(0u32.into(), &[0]);
-    endpoint.close(0u32.into(), &[0]);
+    conn.closed().await;
+    endpoint.wait_idle().await;
+    tracing::debug!("exchange complete");
 
     Ok(receiver_addr)
 }

@@ -6,7 +6,7 @@ use qs_core::{
     common::FilesAvailable,
     receive::{roundezvous_connect, ReceiveError, Receiver, ReceiverArgs},
     send::{roundezvous_announce, SendError, Sender, SenderArgs},
-    utils, QuicSendError, CODE_LEN, STUN_SERVERS, VERSION,
+    utils, QuicSendError, CODE_LEN, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION, STUN_SERVERS,
 };
 use std::{
     cell::RefCell,
@@ -20,7 +20,7 @@ use thiserror::Error;
 const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(209, 25, 141, 16)), 1172);
 
 #[derive(Parser, Debug)]
-#[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = QS_VERSION, author = env!("CARGO_PKG_AUTHORS"))]
 struct Args {
     /// Log level
     #[clap(long, short, default_value = "info")]
@@ -72,11 +72,18 @@ enum AppError {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), AppError> {
+async fn main() -> color_eyre::Result<()> {
     let args: Args = Args::parse();
+    color_eyre::install()?;
     tracing_subscriber::fmt()
         .with_max_level(args.log_level)
         .init();
+
+    tracing::debug!(
+        "qs-ver {}, roundezvous-proto-ver {}",
+        QS_VERSION,
+        ROUNDEZVOUS_PROTO_VERSION
+    );
 
     // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {

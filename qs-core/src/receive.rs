@@ -4,8 +4,9 @@ use crate::{
     common::{get_files_available, receive_packet, send_packet, FileSendRecvTree, FilesAvailable},
     packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
     unsafe_client_config,
-    utils::{self_signed_cert, Version},
-    BUF_SIZE, CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, ROUNDEZVOUS_SERVER_NAME, VERSION,
+    utils::self_signed_cert,
+    BUF_SIZE, CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION,
+    ROUNDEZVOUS_SERVER_NAME,
 };
 use async_compression::tokio::bufread::GzipDecoder;
 use quinn::{default_runtime, Connection, Endpoint, EndpointConfig, ServerConfig};
@@ -116,6 +117,10 @@ pub enum ReceiveError {
     Read(#[from] quinn::ReadError),
     #[error("version mismatch, expected: {0}, got: {1}")]
     WrongVersion(String, String),
+    #[error(
+        "wrong roundezvous protocol version, the roundezvous server expected {0}, but got: {1}"
+    )]
+    WrongRoundezvousVersion(u32, u32),
     #[error("unexpected data packet: {0:?}")]
     UnexpectedDataPacket(SenderToReceiver),
     #[error("unexpected roundezvous data packet: {0:?}")]
@@ -198,15 +203,18 @@ impl Receiver {
     ) -> Result<(), ReceiveError> {
         match receive_packet::<SenderToReceiver>(&self.conn).await? {
             SenderToReceiver::ConnRequest { version_num } => {
-                if version_num != VERSION {
+                if version_num != QS_VERSION {
                     send_packet(
                         ReceiverToSender::WrongVersion {
-                            expected: VERSION.to_string(),
+                            expected: QS_VERSION.to_string(),
                         },
                         &self.conn,
                     )
                     .await?;
-                    return Err(ReceiveError::WrongVersion(VERSION.to_string(), version_num));
+                    return Err(ReceiveError::WrongVersion(
+                        QS_VERSION.to_string(),
+                        version_num,
+                    ));
                 }
                 send_packet(ReceiverToSender::Ok, &self.conn).await?;
             }
@@ -333,7 +341,7 @@ pub async fn roundezvous_connect(
 
     send_packet(
         RoundezvousToServer::Connect {
-            version: Version::from(VERSION),
+            version: ROUNDEZVOUS_PROTO_VERSION,
             socket_addr: external_addr,
             code,
         },
@@ -344,12 +352,17 @@ pub async fn roundezvous_connect(
     let sender_addr = match receive_packet::<RoundezvousFromServer>(&conn).await? {
         RoundezvousFromServer::SocketAddr { socket_addr } => socket_addr,
         RoundezvousFromServer::WrongVersion { expected } => {
-            return Err(ReceiveError::WrongVersion(expected, VERSION.to_string()))
+            return Err(ReceiveError::WrongRoundezvousVersion(
+                expected,
+                ROUNDEZVOUS_PROTO_VERSION,
+            ))
         }
         p => return Err(ReceiveError::UnexpectedRoundezvousDataPacket(p)),
     };
 
-    endpoint.close(0u32.into(), b"exchange complete");
+    conn.closed().await;
+    endpoint.wait_idle().await;
+    tracing::debug!("exchange complete");
 
     Ok(sender_addr)
 }

@@ -1,6 +1,5 @@
 use crate::{
     common::{FilesAvailable, FilesToSkip},
-    utils::Version,
     CODE_LEN,
 };
 use bincode::{Decode, Encode};
@@ -33,15 +32,15 @@ pub enum ReceiverToSender {
 pub enum RoundezvousToServer {
     /// Sender announces itself to the roundezvous server
     Announce {
-        /// The sender's qs version
-        version: Version,
+        /// The sender's protocol version
+        version: u32,
         /// The external socket addr of the sender
         socket_addr: SocketAddr,
     },
     /// Receiver connects to the roundezvous server
     Connect {
-        /// The receiver's qs version
-        version: Version,
+        /// The receiver's protocol version
+        version: u32,
         /// The external socket addr of the receiver
         socket_addr: SocketAddr,
         /// The code the receiver received from the sender
@@ -57,5 +56,5 @@ pub enum RoundezvousFromServer {
     /// Exchange the IPs of the sender and receiver
     SocketAddr { socket_addr: SocketAddr },
     /// Reject the connection request, because the version number is wrong
-    WrongVersion { expected: String },
+    WrongVersion { expected: u32 },
 }

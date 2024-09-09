@@ -2,15 +2,15 @@ use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{atomic::AtomicU64, Arc},
-    time,
+    time::{self, Duration},
 };
 
 use clap::Parser;
 use qs_core::{
     common::{receive_packet, send_packet},
     packets::{RoundezvousFromServer, RoundezvousToServer},
-    utils::{self_signed_cert, Version},
-    CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, VERSION,
+    utils::self_signed_cert,
+    CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, ROUNDEZVOUS_PROTO_VERSION,
 };
 
 use quinn::{Connection, ServerConfig};
@@ -25,17 +25,21 @@ enum AppError {
     Connection(#[from] quinn::ConnectionError),
     #[error("invalid code {0:?}")]
     InvalidCode([u8; CODE_LEN]),
-    #[error("wrong version, expected {0}, got {1}")]
-    WrongVersion(Version, Version),
+    #[error("wrong protocol version, expected {0}, got {1}")]
+    WrongVersion(u32, u32),
 }
 
 const DEFAULT_BIND_PORT: u16 = 9090;
 const CODE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const MAX_CONNECTION_AGE: u64 = 60;
 const MAX_CONCURRENT_CONNECTIONS: usize = 1_000;
+const ROUNDEZVOUS_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Time in seconds to wait before closing any active connections on purpose
+/// this is used to ensure any packets have the time to arrive
+const CONN_CLOSE_DELAY: u64 = 3;
 
 #[derive(Parser, Debug)]
-#[clap(version = VERSION, author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = ROUNDEZVOUS_VERSION, author = env!("CARGO_PKG_AUTHORS"))]
 struct Args {
     /// Log level
     #[clap(long, short, default_value = "info")]
@@ -46,7 +50,7 @@ struct Args {
     /// bind ip
     #[clap(long, short = 's', default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     bind_ip: IpAddr,
-    /// Max connection age
+    /// Max connection age seconds
     #[clap(long, short, default_value_t = MAX_CONNECTION_AGE)]
     max_connection_age: u64,
     /// Max concurrent connections
@@ -68,6 +72,12 @@ async fn main() -> Result<(), AppError> {
     tracing_subscriber::fmt()
         .with_max_level(args.log_level)
         .init();
+
+    tracing::debug!(
+        "qs-roundezvous {}, roundezvous-proto-ver {}",
+        ROUNDEZVOUS_VERSION,
+        ROUNDEZVOUS_PROTO_VERSION
+    );
 
     let addr = SocketAddr::new(args.bind_ip, args.port);
     let endpoint = quinn::Endpoint::server(server_config(), addr)?;
@@ -156,8 +166,10 @@ async fn handle_connection(conn: Connection, state: Arc<AppState>) -> Result<(),
             )
             .await?;
 
-            conn.closed().await;
-            sender_conn.closed().await;
+            tokio::time::sleep(Duration::from_secs(CONN_CLOSE_DELAY)).await;
+
+            conn.close(0u32.into(), &[0]);
+            sender_conn.close(0u32.into(), &[0]);
 
             tracing::info!("exchange complete for connection {conn_id}");
         }
@@ -166,16 +178,22 @@ async fn handle_connection(conn: Connection, state: Arc<AppState>) -> Result<(),
     Ok(())
 }
 
-async fn validate_version(version: Version, conn: &Connection) -> Result<(), AppError> {
-    if !version.matches_major(&Version::from(VERSION)) {
+async fn validate_version(proto_version: u32, conn: &Connection) -> Result<(), AppError> {
+    if proto_version != ROUNDEZVOUS_PROTO_VERSION {
         send_packet(
             RoundezvousFromServer::WrongVersion {
-                expected: VERSION.to_string(),
+                expected: ROUNDEZVOUS_PROTO_VERSION,
             },
             conn,
         )
         .await?;
-        Err(AppError::WrongVersion(Version::from(VERSION), version))
+
+        tokio::time::sleep(Duration::from_secs(CONN_CLOSE_DELAY)).await;
+
+        Err(AppError::WrongVersion(
+            ROUNDEZVOUS_PROTO_VERSION,
+            proto_version,
+        ))
     } else {
         Ok(())
     }

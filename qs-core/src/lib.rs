@@ -23,7 +23,11 @@ pub const STUN_SERVERS: [&str; 5] = [
 pub const SEND_SERVER_NAME: &str = "quic-send";
 pub const ROUNDEZVOUS_SERVER_NAME: &str = "quic-roundezvous";
 pub const KEEP_ALIVE_INTERVAL_SECS: u64 = 5;
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const QS_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Version of the roundezvous protocol,
+/// The roundezvous server could also be used
+/// outside of quic-send
+pub const ROUNDEZVOUS_PROTO_VERSION: u32 = 1;
 
 pub const CODE_LEN: usize = 8;
 
