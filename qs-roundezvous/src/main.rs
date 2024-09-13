@@ -7,7 +7,7 @@ use std::{
 
 use clap::Parser;
 use qs_core::{
-    common::{receive_packet, send_packet},
+    common::{receive_packet, send_packet, PacketRecvError},
     packets::{RoundezvousFromServer, RoundezvousToServer},
     utils::self_signed_cert,
     CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, ROUNDEZVOUS_PROTO_VERSION,
@@ -27,6 +27,8 @@ enum AppError {
     InvalidCode([u8; CODE_LEN]),
     #[error("wrong protocol version, expected {0}, got {1}")]
     WrongVersion(u32, u32),
+    #[error("receive packet error: {0}")]
+    ReceivePacket(#[from] PacketRecvError),
 }
 
 const DEFAULT_BIND_PORT: u16 = 9090;

@@ -1,7 +1,10 @@
 #![allow(clippy::suspicious_open_options)]
 
 use crate::{
-    common::{get_files_available, receive_packet, send_packet, FileSendRecvTree, FilesAvailable},
+    common::{
+        get_files_available, receive_packet, send_packet, FileSendRecvTree, FilesAvailable,
+        PacketRecvError,
+    },
     packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
     unsafe_client_config,
     utils::self_signed_cert,
@@ -131,6 +134,8 @@ pub enum ReceiveError {
     UnknownPeer(SocketAddr),
     #[error("invalid code")]
     InvalidCode,
+    #[error("receive packet error: {0}")]
+    ReceivePacket(#[from] PacketRecvError),
 }
 
 pub struct Receiver {

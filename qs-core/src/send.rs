@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    common::{get_files_available, receive_packet, send_packet, FileSendRecvTree},
+    common::{get_files_available, receive_packet, send_packet, FileSendRecvTree, PacketRecvError},
     packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
     unsafe_client_config, BUF_SIZE, CODE_LEN, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION,
     ROUNDEZVOUS_SERVER_NAME, SEND_SERVER_NAME,
@@ -112,6 +112,8 @@ pub enum SendError {
     UnexpectedRoundezvousDataPacket(RoundezvousFromServer),
     #[error("files rejected")]
     FilesRejected,
+    #[error("receive packet error: {0}")]
+    ReceivePacket(#[from] PacketRecvError),
 }
 
 pub struct Sender {

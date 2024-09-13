@@ -3,6 +3,7 @@ use std::path::Path;
 use async_compression::tokio::write::{GzipDecoder, GzipEncoder};
 use bincode::{Decode, Encode};
 use quinn::Connection;
+use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
 /// Tree structure that represents the files that
@@ -304,7 +305,21 @@ pub async fn send_packet<P: Encode + std::fmt::Debug>(
     Ok(())
 }
 
-pub async fn receive_packet<P: Decode + std::fmt::Debug>(conn: &Connection) -> std::io::Result<P> {
+#[derive(Debug, Error)]
+pub enum PacketRecvError {
+    #[error("io error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("encode error: {0}")]
+    EncodeError(#[from] bincode::error::DecodeError),
+    #[error("connection error: {0}")]
+    Connection(#[from] quinn::ConnectionError),
+    #[error("read error {0}")]
+    Read(#[from] quinn::ReadError),
+}
+
+pub async fn receive_packet<P: Decode + std::fmt::Debug>(
+    conn: &Connection,
+) -> Result<P, PacketRecvError> {
     let mut recv = conn.accept_uni().await?;
     let mut buf = Vec::new();
 
@@ -320,9 +335,7 @@ pub async fn receive_packet<P: Decode + std::fmt::Debug>(conn: &Connection) -> s
 
     let decompressed = decompress_gzip(&buf).await?;
 
-    let packet = bincode::decode_from_slice(&decompressed, bincode::config::standard())
-        .unwrap()
-        .0;
+    let packet = bincode::decode_from_slice(&decompressed, bincode::config::standard())?.0;
 
     tracing::debug!("Received packet: {:?}", packet);
 
