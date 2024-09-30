@@ -367,10 +367,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_compression() {
-        let data = b"hello world";
+        let data = b"hellllllllllllllllllllllllo world";
         let compressed = compress_gzip(data).await.unwrap();
         let decompressed = decompress_gzip(&compressed).await.unwrap();
 
+        assert!(compressed.len() < data.len());
         assert_eq!(data, &decompressed[..]);
     }
 
