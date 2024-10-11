@@ -98,14 +98,20 @@ async fn main() -> Result<(), AppError> {
                 continue;
             }
 
-            match conn.await {
-                Ok(conn) => {
-                    tokio::spawn(handle_connection(conn, state.clone()));
+            let state_c = state.clone();
+
+            tokio::spawn(async move {
+                match conn.await {
+                    Ok(conn) => {
+                        if let Err(e) = handle_connection(conn, state_c).await {
+                            tracing::warn!("{e}");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("error accepting connection: {:?}", e);
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("error accepting connection: {:?}", e);
-                }
-            }
+            });
         }
     }
 }
