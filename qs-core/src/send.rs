@@ -136,8 +136,7 @@ impl Sender {
         receiver: SocketAddr,
         args: SenderArgs,
     ) -> Result<Self, SendError> {
-        let rt = default_runtime()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
+        let rt = default_runtime().unwrap();
 
         let mut endpoint = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
 
@@ -265,8 +264,7 @@ pub async fn roundezvous_announce(
     server_addr: SocketAddr,
     mut code_callback: impl FnMut([u8; CODE_LEN]),
 ) -> Result<SocketAddr, SendError> {
-    let rt = default_runtime()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
+    let rt = default_runtime().unwrap();
 
     let mut endpoint = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
 

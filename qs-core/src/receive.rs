@@ -160,8 +160,7 @@ impl Receiver {
         sender: SocketAddr,
         args: ReceiverArgs,
     ) -> Result<Self, ReceiveError> {
-        let rt = default_runtime()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
+        let rt = default_runtime().unwrap();
 
         let endpoint = Endpoint::new(EndpointConfig::default(), Some(server_config()), socket, rt)?;
         if let Some(conn) = endpoint.accept().await {
@@ -333,8 +332,7 @@ pub async fn roundezvous_connect(
     server_addr: SocketAddr,
     code: [u8; CODE_LEN],
 ) -> Result<SocketAddr, ReceiveError> {
-    let rt = default_runtime()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no async runtime found"))?;
+    let rt = default_runtime().unwrap();
 
     let mut endpoint = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
 

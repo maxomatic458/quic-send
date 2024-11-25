@@ -49,7 +49,7 @@ struct Args {
     /// Port
     #[clap(long, short, default_value_t = DEFAULT_BIND_PORT)]
     port: u16,
-    /// bind ip
+    /// bind/source ip
     #[clap(long, short = 's', default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     bind_ip: IpAddr,
     /// Max connection age seconds
