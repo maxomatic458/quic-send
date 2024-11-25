@@ -93,6 +93,7 @@ async fn main() -> Result<(), AppError> {
 
     loop {
         if let Some(conn) = endpoint.accept().await {
+            tracing::debug!("connection attempt");
             if state.awaiting_exchange.read().await.len() >= args.max_concurrent_connections {
                 tracing::warn!("max concurrent connections reached, dropping connection");
                 continue;
