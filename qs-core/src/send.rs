@@ -1,7 +1,6 @@
 #![allow(clippy::suspicious_open_options)]
 
 use std::{
-    io,
     net::{SocketAddr, UdpSocket},
     path::PathBuf,
 };
@@ -116,6 +115,7 @@ pub enum SendError {
     ReceivePacket(#[from] PacketRecvError),
 }
 
+/// A client that can send files
 pub struct Sender {
     /// Sender arguments
     args: SenderArgs,
@@ -125,6 +125,7 @@ pub struct Sender {
     endpoint: Endpoint,
 }
 
+/// Arguments for the sender
 pub struct SenderArgs {
     /// Files/Directories to send
     pub files: Vec<PathBuf>,

@@ -138,6 +138,7 @@ pub enum ReceiveError {
     ReceivePacket(#[from] PacketRecvError),
 }
 
+/// A receiver that can receive files
 pub struct Receiver {
     /// Receiver arguments
     args: ReceiverArgs,
@@ -147,6 +148,7 @@ pub struct Receiver {
     endpoint: Endpoint,
 }
 
+/// Arguments for the receiver
 pub struct ReceiverArgs {
     /// Resume interrupted transfer
     pub resume: bool,
