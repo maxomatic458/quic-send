@@ -1,0 +1,77 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  color: #0f0f0f;
+  background-color: #f6f6f6;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+
+}
+
+* {
+  margin: 0;
+}
+
+.flex {
+  display: flex;
+}
+
+.main {
+  /* background: blue; */
+  height: 100vh;
+  width: 100vw;
+}
+
+.flex-col {
+  flex-direction: column;
+  /* background: red; */
+}
+
+.flex-row {
+  flex-direction: row;
+}
+
+.main {
+
+}
+
+.main-upload-area {
+  flex-grow: 1;
+  margin-left: 3rem;
+  margin-right: 3rem;
+  margin-top: 3rem;
+  margin-bottom: 6rem;
+  /* background: yellow; */
+  background: #d9f0f2;
+  border: 3px dashed #00b7c3;
+  /* border-width: 10px; */
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+}
+
+.code-input {
+  border: 1px dottet #00b7c3;
+}
+
+.upload-icon {
+  color: #00b7c3;
+}
+
+.upload-text {
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  color: #00b7c3;
+  font-weight: bold;
+}
