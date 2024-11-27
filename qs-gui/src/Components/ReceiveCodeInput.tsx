@@ -1,4 +1,5 @@
-import { createSignal, onMount } from "solid-js";
+import { createEffect, createSignal, onMount } from "solid-js";
+import { redirect } from "@solidjs/router";
 
 interface ReceiveCodeInputProps {
     /// Length of the receive code
@@ -10,49 +11,41 @@ interface ReceiveCodeInputProps {
 function ReceiveCodeInput(props: ReceiveCodeInputProps) {
     const [code, setCode] = createSignal<string>("");
 
-    let inputs: HTMLDivElement;
-
-    onMount(() => {
-        if (inputs) {
-            inputs.addEventListener("input", (e) => {
-                const target = e.target as HTMLInputElement;
-                const val = target.value;
-                if (val != "") {
-                    const next = target.nextElementSibling as HTMLInputElement;
-                    if (next) {
-                        next.focus();
-                    }
-                }
-            })
-
-            inputs.addEventListener("keyup", (e) => {
-                const target = e.target as HTMLInputElement;
-                const key = e.key;
-
-                if (key == "Backspace" || key == "Delete") {
-                    let prev = target.previousElementSibling as HTMLInputElement;
-                    if (target.value.length == 0) {
-                        console.log(target.value);
-                        // prev = prev.previousElementSibling as HTMLInputElement;
-                        // prev.value = "";
-                    }
-
-                    target.value = "";
-                    if (prev) {
-                        prev.focus();
-                    }
-                }
-
-                return
-            })
+    function onParentInput(e: InputEvent) {
+        const target = e.target as HTMLInputElement;
+        const val = target.value;
+        if (val != "") {
+            const next = target.nextElementSibling as HTMLInputElement;
+            if (next) {
+                next.focus();
+            }
         }
-    })
+    }
+
+    function onParentKeyDown(e: KeyboardEvent) {
+        const target = e.target as HTMLInputElement;
+        const key = e.key;
+
+        if (key == "Backspace" || key == "Delete") {
+            let prev = target.previousElementSibling as HTMLInputElement;
+            if (prev) {
+                target.value = "";
+                prev.focus();
+            }
+        }
+    }
 
     return <div class="receive-code-input-container">
-        <div class="inputs" id="inputs" ref={(el) => inputs = el}>
+        <div
+            class="inputs"
+            id="inputs"
+            onInput={onParentInput}
+            onKeyDown={onParentKeyDown}
+        >
             {
                 Array.from({ length: props.length }).map((_, i) => {
                     return <input
+                        maxlength={1}
                         type="text"
                         value={code()[i] ?? ""}
                         onInput={(e) => {

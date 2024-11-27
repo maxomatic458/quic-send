@@ -4,9 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import { createStore } from "solid-js/store";
 import { Route, Router } from "@solidjs/router";
-import Main from "./Pages/main";
+import Main from "./Pages/Main";
 import Send from "./Pages/Send";
 import Receive from "./Pages/Receive";
+import Connect from "./Pages/Connect";
 
 interface SendArgs {
     /// Files to send
@@ -31,6 +32,7 @@ function App() {
         <Route path="/" component={Main} />
         <Route path="/send" component={Send} />
         <Route path="/recv" component={Receive} />
+        <Route path="/conn" component={Connect} />
     </Router>
 }
 

@@ -6,7 +6,7 @@ import ReceiveCodeInput from "../Components/ReceiveCodeInput";
 function Main() {
     const [code, setCode] = createSignal<string>("");
     const [codeLength, setCodeLength] = createSignal<number>(0);
-    
+
     invoke("code_len", {}).then((res) => {
         setCodeLength(res as number);
     });
@@ -23,7 +23,7 @@ function Main() {
             </div>
         </div>
         <div class="code-input">
-            <ReceiveCodeInput length={codeLength()} onChange={() => {}} />
+            <ReceiveCodeInput length={6} onChange={setCode} />
         </div>
     </div>
 }

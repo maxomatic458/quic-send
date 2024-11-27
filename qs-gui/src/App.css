@@ -47,7 +47,7 @@
   margin-left: 3rem;
   margin-right: 3rem;
   margin-top: 3rem;
-  margin-bottom: 6rem;
+  margin-bottom: 5rem;
   /* background: yellow; */
   background: #d9f0f2;
   border: 3px dashed #00b7c3;
@@ -61,7 +61,17 @@
 }
 
 .code-input {
-  border: 1px dottet #00b7c3;
+  background: red;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 1rem;
+}
+
+.inputs > input {
+  width: 1.2rem;
+  height: 1.5rem;
+  margin-left: 2px;
+  margin-right: 2px;
 }
 
 .upload-icon {
