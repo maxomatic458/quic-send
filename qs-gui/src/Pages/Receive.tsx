@@ -13,6 +13,7 @@ import {
     requestPermission,
     sendNotification,
 } from "@tauri-apps/plugin-notification"
+import { store } from "../App"
 
 type ReceiveState =
     | "connecting-to-server"
@@ -37,7 +38,7 @@ function Receive(props: ReceiveProps) {
 
     invoke("download_files", {
         code: props.code,
-        serverAddr: "192.168.178.47:9090",
+        serverAddr: store.roundezvousAddr,
     }).catch((e: string) => {
         props.onError(e)
     })

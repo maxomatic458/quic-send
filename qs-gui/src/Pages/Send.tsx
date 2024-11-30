@@ -12,6 +12,7 @@ import {
     sendNotification,
 } from "@tauri-apps/plugin-notification"
 import { getFileNameFromPath } from "../utils"
+import { store } from "../App"
 
 type SendState =
     | "choose-files"
@@ -23,6 +24,7 @@ type SendState =
 interface ReceiveProps {
     files: string[]
     onError(error: string): void
+    onCancel(): void
 }
 
 function Send(props: ReceiveProps) {
@@ -63,7 +65,7 @@ function Send(props: ReceiveProps) {
                     }
                     onSend={() => {
                         invoke("upload_files", {
-                            serverAddr: "192.168.178.47:9090",
+                            serverAddr: store.roundezvousAddr,
                             files: files().map(([path, _, __]) => path),
                         }).catch((e: string) => {
                             props.onError(e)
@@ -71,6 +73,7 @@ function Send(props: ReceiveProps) {
 
                         setState("connecting-to-server")
                     }}
+                    onCancel={() => props.onCancel()}
                 />
             ) : state() == "connecting-to-server" ? (
                 <Loading text="Connecting to server..." />

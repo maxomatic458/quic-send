@@ -35,6 +35,9 @@ function Main(props: MainProps) {
 
     return (
         <div class="main flex flex-col">
+            <h2 class="text-center" style={{ "margin-top": "2rem" }}>
+                quic send
+            </h2>
             <div class="main-upload-area">
                 <div>
                     <div class="upload-icon" style={{ "text-align": "center" }}>
@@ -49,6 +52,7 @@ function Main(props: MainProps) {
                     onChange={setCode}
                 />
             </div>
+            <footer class="text-center">quic-send v0.3.0</footer>
         </div>
     )
 }

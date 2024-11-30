@@ -26,6 +26,12 @@ function App() {
         toast.error(e)
         console.error(e)
         setCode(null)
+        setFiles([])
+    }
+
+    function cancel() {
+        setCode(null)
+        setFiles([])
     }
 
     return (
@@ -35,7 +41,11 @@ function App() {
                 {code() !== null ? (
                     <Receive code={code() as string} onError={handleError} />
                 ) : files().length > 0 ? (
-                    <Send files={files()} onError={handleError} />
+                    <Send
+                        files={files()}
+                        onError={handleError}
+                        onCancel={cancel}
+                    />
                 ) : (
                     <Main
                         onEnterCode={(code) => setCode(code)}
