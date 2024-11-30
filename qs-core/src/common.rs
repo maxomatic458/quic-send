@@ -3,6 +3,7 @@ use std::path::Path;
 use async_compression::tokio::write::{GzipDecoder, GzipEncoder};
 use bincode::{Decode, Encode};
 use quinn::Connection;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
@@ -49,7 +50,7 @@ impl FileSendRecvTree {
 }
 
 /// Tree structure that represents the files that are available
-#[derive(Debug, PartialEq, Clone, Encode, Decode, Hash)]
+#[derive(Debug, PartialEq, Clone, Encode, Decode, Hash, Serialize, Deserialize)]
 pub enum FilesAvailable {
     File {
         name: String,

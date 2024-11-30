@@ -13,6 +13,7 @@ rcgen = { workspace = true }
 bincode = { workspace = true }
 clap = { workspace = true }
 semver = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 stunclient = "0.4.0"
 

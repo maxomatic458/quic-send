@@ -185,6 +185,7 @@ async fn main() -> color_eyre::Result<()> {
                         print!("waiting for the other peer to accept the files...");
                         io::stdout().flush().unwrap();
                     },
+                    |_accepted| {},
                     |initial_progress| {
                         println!("\r{}", " ".repeat(49));
                         *rc_clone.borrow_mut() = Some(CliProgressBars::new(initial_progress));
@@ -204,16 +205,10 @@ async fn main() -> color_eyre::Result<()> {
             auto_accept,
             ..
         } => {
-            let mut receiver = Receiver::connect(
-                socket,
-                other,
-                ReceiverArgs {
-                    resume: !overwrite,
-                    output_path: output,
-                },
-            )
-            .await
-            .map_err(QuicSendError::Receive)?;
+            let mut receiver =
+                Receiver::connect(socket, other, ReceiverArgs { resume: !overwrite })
+                    .await
+                    .map_err(QuicSendError::Receive)?;
 
             receiver
                 .receive_files(
@@ -223,9 +218,11 @@ async fn main() -> color_eyre::Result<()> {
                     |files_offered| {
                         if auto_accept {
                             println!("auto accepting files");
-                            true
+                            Some(output.clone())
+                        } else if accept_files(files_offered) {
+                            Some(output.clone())
                         } else {
-                            accept_files(files_offered)
+                            None
                         }
                     },
                     &mut |last_received| {

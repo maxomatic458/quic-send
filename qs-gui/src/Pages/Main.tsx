@@ -1,31 +1,56 @@
-import { invoke } from "@tauri-apps/api/core";
-import { TbFileUpload } from "solid-icons/tb";
-import { createSignal } from "solid-js";
-import ReceiveCodeInput from "../Components/ReceiveCodeInput";
+import { invoke } from "@tauri-apps/api/core"
+import { TbFileUpload } from "solid-icons/tb"
+import { createEffect, createSignal } from "solid-js"
+import ReceiveCodeInput from "../Components/ReceiveCodeInput"
+import { DragDropEvent } from "@tauri-apps/api/webview"
+import { Event, listen } from "@tauri-apps/api/event"
 
-function Main() {
-    const [code, setCode] = createSignal<string>("");
-    const [codeLength, setCodeLength] = createSignal<number>(0);
-
-    invoke("code_len", {}).then((res) => {
-        setCodeLength(res as number);
-    });
-
-    return <div class="main flex flex-col">
-        <div class="main-upload-area">
-            <div>
-                <div class="upload-icon" style={{"text-align": "center"}}>
-                    <TbFileUpload size={"50px"}/>
-                </div>
-                <div class="upload-text">
-                    Drop files to send
-                </div>
-            </div>
-        </div>
-        <div class="code-input">
-            <ReceiveCodeInput length={6} onChange={setCode} />
-        </div>
-    </div>
+interface MainProps {
+    /// Callback for when the code is entered
+    onEnterCode: (code: string) => void
+    /// Callback for when files are dropped
+    onFilesDropped: (files: string[]) => void
 }
 
-export default Main;
+function Main(props: MainProps) {
+    /// Receiver
+    const [code, setCode] = createSignal<string>("")
+    const [codeLength, setCodeLength] = createSignal<number | null>(null)
+
+    invoke("code_len", {}).then((res) => {
+        setCodeLength(res as number)
+    })
+
+    listen("tauri://drag-drop", (event: Event<DragDropEvent>) => {
+        const payload = event.payload
+        const paths = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
+        props.onFilesDropped(paths)
+    })
+
+    createEffect(() => {
+        if (code().length == codeLength()) {
+            props.onEnterCode(code())
+        }
+    })
+
+    return (
+        <div class="main flex flex-col">
+            <div class="main-upload-area">
+                <div>
+                    <div class="upload-icon" style={{ "text-align": "center" }}>
+                        <TbFileUpload size={"50px"} />
+                    </div>
+                    <div class="upload-text">Drop files to send</div>
+                </div>
+            </div>
+            <div class="code-input">
+                <ReceiveCodeInput
+                    length={codeLength() ?? 0}
+                    onChange={setCode}
+                />
+            </div>
+        </div>
+    )
+}
+
+export default Main
