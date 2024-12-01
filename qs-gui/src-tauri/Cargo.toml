@@ -29,3 +29,4 @@ thiserror = { workspace = true }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 walkdir = "2"
+lazy_static = "1"

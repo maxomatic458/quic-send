@@ -5,7 +5,7 @@ import Main from "./Pages/Main"
 import Receive from "./Pages/Receive"
 import toast, { Toaster } from "solid-toast"
 import Send from "./Pages/Send"
-import WaitForReceiver from "./Pages/WaitForReceiver"
+import WindowControls from "./Components/WindowControls"
 
 export interface AppState {
     roundezvousAddr: string
@@ -57,6 +57,7 @@ function App() {
         <>
             <Toaster position="top-right" gutter={8} />
             <div class="app">
+                <WindowControls />
                 {code() !== null ? (
                     <Receive code={code() as string} onError={handleError} />
                 ) : files().length > 0 ? (

@@ -3,16 +3,10 @@ import Loading from "../Components/Loading"
 import { invoke } from "@tauri-apps/api/core"
 import { Event, listen } from "@tauri-apps/api/event"
 import AcceptFiles from "./AcceptFiles"
-import { useNavigate } from "@solidjs/router"
 import TransferFiles from "./TransferFiles"
-import { window } from "@tauri-apps/api"
 import { Window } from "@tauri-apps/api/window"
 
-import {
-    isPermissionGranted,
-    requestPermission,
-    sendNotification,
-} from "@tauri-apps/plugin-notification"
+import { sendNotification } from "@tauri-apps/plugin-notification"
 import { store } from "../App"
 
 type ReceiveState =

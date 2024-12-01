@@ -1,13 +1,13 @@
 import { Event, listen } from "@tauri-apps/api/event"
 import { DragDropEvent } from "@tauri-apps/api/webviewWindow"
-import { createEffect, createSignal, onMount } from "solid-js"
+import { createEffect, createSignal } from "solid-js"
 import FileUploadCard, {
     FileInfo,
     FileUploadCardData,
 } from "../Components/FileUploadCard"
 import { invoke } from "@tauri-apps/api/core"
 import toast from "solid-toast"
-import { getFileNameFromPath, humanFileSize } from "../utils"
+import { humanFileSize } from "../utils"
 
 interface UploadFilesProps {
     files: string[]
@@ -71,7 +71,7 @@ function UploadFiles(props: UploadFilesProps) {
     })
 
     return (
-        <div style={{ height: "100vh" }} class="upload-files">
+        <div class="upload-files full-height">
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 Files to send
             </h3>

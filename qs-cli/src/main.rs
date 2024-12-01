@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use dialoguer::theme::ColorfulTheme;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
+use local_ip_address::local_ip;
 use qs_core::{
     common::FilesAvailable,
     receive::{roundezvous_connect, ReceiveError, Receiver, ReceiverArgs},
@@ -114,6 +115,11 @@ async fn main() -> color_eyre::Result<()> {
     let other;
 
     if args.direct {
+        let local_ip = local_ip().unwrap();
+        println!(
+            "Local address (if the other peer is in the same network): {}",
+            local_ip.to_string().green()
+        );
         println!("External address: {}", external_addr.to_string().green());
 
         other =

@@ -46,11 +46,14 @@ function Main(props: MainProps) {
                     <div class="upload-text">Drop files to send</div>
                 </div>
             </div>
-            <div class="code-input">
-                <ReceiveCodeInput
-                    length={codeLength() ?? 0}
-                    onChange={setCode}
-                />
+            <div class="text-center">
+                <span>enter code to receive</span>
+                <div class="code-input">
+                    <ReceiveCodeInput
+                        length={codeLength()!}
+                        onChange={setCode}
+                    />
+                </div>
             </div>
             <footer class="text-center">quic-send v0.3.0</footer>
         </div>

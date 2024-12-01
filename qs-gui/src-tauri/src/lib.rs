@@ -2,7 +2,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, RwLock},
+    sync::{atomic::AtomicU64, Arc, RwLock},
 };
 
 use qs_core::{
@@ -37,8 +37,17 @@ fn exit(handle: AppHandle, code: i32) {
     handle.exit(code);
 }
 
-// #[tauri::command]
-// fn send_notification()
+// Use an atomic to keep track of the bytes transferred
+// So we can poll it from the frontend.
+// This seems to be faster than using tauri events
+lazy_static::lazy_static! {
+    static ref BYTES_TRANSFERRED: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+}
+
+#[tauri::command(async)]
+async fn bytes_transferred() -> u64 {
+    BYTES_TRANSFERRED.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 #[tauri::command(async)]
 async fn download_files(
@@ -131,7 +140,7 @@ async fn download_files(
                 output_path
             },
             &mut |bytes_read| {
-                window.emit("bytes-received", bytes_read).unwrap();
+                BYTES_TRANSFERRED.fetch_add(bytes_read, std::sync::atomic::Ordering::Relaxed);
             },
         )
         .await
@@ -139,6 +148,7 @@ async fn download_files(
 
     window.emit("transfer-complete", ()).unwrap();
 
+    BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 
@@ -193,7 +203,7 @@ async fn upload_files(
                     .unwrap();
             },
             &mut |bytes_sent| {
-                window.emit("bytes-sent", bytes_sent).unwrap();
+                BYTES_TRANSFERRED.fetch_add(bytes_sent, std::sync::atomic::Ordering::Relaxed);
             },
         )
         .await
@@ -201,6 +211,7 @@ async fn upload_files(
 
     window.emit("transfer-complete", ()).unwrap();
 
+    BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 
@@ -271,6 +282,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             exit,
             code_len,
+            bytes_transferred,
             download_files,
             file_info,
             upload_files,

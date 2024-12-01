@@ -45,3 +45,5 @@ $ qs receive 123456
 
 
 * While it is possible in Magic Wormhole, establishing a direct connection is very unlikely (as the connection tries to establish a direct TCP connection), quick send uses UDP hole punching instead which is way more reliable and works for most networks.
+
+The icon of the gui is made with the font [Commodore 64 Rounded](https://online-fonts.com/fonts/commodore-64-rounded) by Devin Cook.

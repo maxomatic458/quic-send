@@ -22,11 +22,9 @@ rand = "0.8.5"
 clap = { version = "4.5.16", features = ["derive"] }
 semver = "1.0.23"
 serde = { version = "1.0.215", features = ["derive"] }
+local-ip-address = "0.6.3"
 
-# https://v2.tauri.app/concept/size/
 [profile.release]
-codegen-units = 1 # Allows LLVM to perform better optimization.
-lto = true # Enables link-time-optimizations.
-opt-level = "s" # Prioritizes small binary size. Use `3` if you prefer speed.
-panic = "abort" # Higher performance by disabling panic handlers.
-strip = true # Ensures debug symbols are removed.
+lto = true
+codegen-units = 1
+strip = "debuginfo"

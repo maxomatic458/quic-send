@@ -6,7 +6,7 @@ interface WaitForReceiverProps {
 
 function WaitForReceiver(props: WaitForReceiverProps) {
     return (
-        <div style={{ height: "94vh" }}>
+        <div>
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 Waiting for receiver to connect
             </h3>

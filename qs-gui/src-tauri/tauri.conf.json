@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "quic send",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "identifier": "com.quic-send.app",
+  "mainBinaryName": "quic-send",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -12,10 +13,13 @@
   "app": {
     "windows": [
       {
-        "title": "qs-qui",
+        "title": "quic send",
         "width": 800,
         "height": 600,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "decorations": false,
+        "minWidth": 400,
+        "minHeight": 300
       }
     ],
     "security": {

@@ -5,6 +5,8 @@ import { humanFileSize } from "../utils"
 import { ProgressBarStatus, Window } from "@tauri-apps/api/window"
 import { invoke } from "@tauri-apps/api/core"
 
+const PROGRESS_CALL_INTERVAL_MS = 80
+
 interface TransferFilesProps {
     type: "send" | "receive"
     /// name, size, isDir
@@ -22,13 +24,11 @@ interface TransferProgressEvent {
 
 function TransferFiles(props: TransferFilesProps) {
     const [downloaded, setDownloaded] = createSignal<number>(0)
-    const [totalSize, setTotalSize] = createSignal<number>(
+    const [totalSize, _setTotalSize] = createSignal<number>(
         props.files.reduce((acc, file) => acc + file[1], 0),
     )
 
     const [barProgress, setBarProgress] = createSignal<number[]>([])
-
-    let FileListRef: HTMLDivElement
 
     listen(
         "initial-download-progress",
@@ -39,18 +39,17 @@ function TransferFiles(props: TransferFilesProps) {
         },
     )
 
-    const event = props.type == "send" ? "bytes-sent" : "bytes-received"
-    listen(event, (event: Event<number>) => {
-        let data = event.payload
-        setDownloaded(downloaded() + data)
-    })
-
     listen("transfer-complete", (_) => {
         // in case stuff gets out of sync somehow
         setDownloaded(totalSize())
     })
 
-    createEffect(() => {
+    setInterval(async () => {
+        let downloaded: number = await invoke("bytes_transferred")
+        setDownloaded(downloaded)
+    }, PROGRESS_CALL_INTERVAL_MS)
+
+    createEffect(async () => {
         let bytesLeft = downloaded()
 
         let progress: number[] = props.files.map((file) => {
@@ -75,8 +74,6 @@ function TransferFiles(props: TransferFilesProps) {
             progress: Math.floor(progressPercent),
         })
 
-        console.log(`Downloaded: ${downloaded()} Total: ${totalSize()}`)
-
         if (downloaded() == totalSize()) {
             props.onComplete()
 
@@ -87,11 +84,11 @@ function TransferFiles(props: TransferFilesProps) {
     })
 
     return (
-        <div style={{ height: "100vh" }} class="transfer-files">
+        <div class="transfer-files full-height">
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 {props.type == "send" ? "Sending files" : "Receiving files"}
             </h3>
-            <div class="file-list" ref={(el) => (FileListRef = el)}>
+            <div class="file-list">
                 {props.files.map((file, index) => {
                     return (
                         <FileTransferCard

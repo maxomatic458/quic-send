@@ -6,13 +6,9 @@ import UploadFiles from "./UploadFiles"
 import WaitForReceiver from "./WaitForReceiver"
 import TransferFiles from "./TransferFiles"
 
-import {
-    isPermissionGranted,
-    requestPermission,
-    sendNotification,
-} from "@tauri-apps/plugin-notification"
-import { getFileNameFromPath } from "../utils"
+import { sendNotification } from "@tauri-apps/plugin-notification"
 import { store } from "../App"
+import { getFileNameFromPath } from "../utils"
 
 type SendState =
     | "choose-files"
@@ -83,7 +79,11 @@ function Send(props: ReceiveProps) {
                 <Loading text="Waiting for receiver to accept files..." />
             ) : state() == "uploading-files" ? (
                 <TransferFiles
-                    files={files()}
+                    files={files().map(([path, size, isDir]) => [
+                        getFileNameFromPath(path),
+                        size,
+                        isDir,
+                    ])}
                     type="send"
                     onCancel={() => invoke("exit", { code: 0 })}
                     onComplete={() => {

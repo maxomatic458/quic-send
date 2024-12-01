@@ -13,10 +13,12 @@
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
     --loading-bar-color: #a8edcc;
+    --window-control-height: 1.9rem;
 }
 
 * {
     margin: 0;
+    user-select: none;
 }
 
 .flex {
@@ -24,7 +26,7 @@
 }
 
 .main {
-    height: 100vh;
+    height: calc(100vh - var(--window-control-height));
     width: 100vw;
 }
 
@@ -105,6 +107,7 @@
     font-size: 1.8rem;
     color: #00b7c3;
     font-weight: bold;
+    user-select: all;
 }
 
 .text-center {
@@ -289,4 +292,33 @@ button:disabled:hover {
 
 .remove-file-upload > button:hover {
     color: rgb(249, 54, 33);
+}
+
+.window-controls {
+    height: 1.9rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.full-height {
+    height: calc(100vh - var(--window-control-height));
+}
+
+.window-control-button > button {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: transparent;
+    border: none;
+    width: 2.9rem;
+    height: 100%;
+}
+
+.window-control-button > button:hover {
+    background: #d3d3d3;
+}
+
+.close-window-button > button:hover {
+    background: #ff3b30;
+    color: white;
 }

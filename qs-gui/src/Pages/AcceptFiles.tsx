@@ -1,5 +1,4 @@
-import { AiOutlineFile, AiOutlineFolder } from "solid-icons/ai"
-import { createSignal, onMount } from "solid-js"
+import { createSignal } from "solid-js"
 import { humanFileSize } from "../utils"
 import FileTransferCard from "../Components/FileTransferCard"
 import { open } from "@tauri-apps/plugin-dialog"
@@ -13,7 +12,7 @@ function AcceptFiles(props: AcceptFilesProps) {
     const [downloadPath, setDownloadPath] = createSignal<string | null>(null)
 
     return (
-        <div style={{ height: "100vh" }} class="accept-files">
+        <div class="accept-files full-height">
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 Files offered
             </h3>

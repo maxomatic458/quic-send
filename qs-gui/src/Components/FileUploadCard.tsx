@@ -1,8 +1,5 @@
-import { invoke } from "@tauri-apps/api/core"
 import { AiOutlineFile, AiOutlineFolder } from "solid-icons/ai"
-import { createSignal } from "solid-js"
 import { getFileNameFromPath, humanFileSize } from "../utils"
-import { Oval } from "solid-spinner"
 import { ImCancelCircle } from "solid-icons/im"
 
 interface FileUploadCardProps {
