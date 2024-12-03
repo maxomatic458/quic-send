@@ -12,7 +12,7 @@ function AcceptFiles(props: AcceptFilesProps) {
     const [downloadPath, setDownloadPath] = createSignal<string | null>(null)
 
     return (
-        <div class="accept-files full-height">
+        <div class="accept-files">
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 Files offered
             </h3>
@@ -36,20 +36,22 @@ function AcceptFiles(props: AcceptFilesProps) {
                         )}
                     </span>
                 </div>
-                <button
-                    onClick={() => {
-                        open({
-                            directory: true,
-                            multiple: false,
-                        }).then((res) => {
-                            if (res !== null) {
-                                setDownloadPath(res)
-                            }
-                        })
-                    }}
-                >
-                    {downloadPath() ?? "Select download path"}
-                </button>
+                <div class="select-download-path">
+                    <button
+                        onClick={() => {
+                            open({
+                                directory: true,
+                                multiple: false,
+                            }).then((res) => {
+                                if (res !== null) {
+                                    setDownloadPath(res)
+                                }
+                            })
+                        }}
+                    >
+                        {downloadPath() ?? "Select download path"}
+                    </button>
+                </div>
             </div>
             <div class="file-choice">
                 <button

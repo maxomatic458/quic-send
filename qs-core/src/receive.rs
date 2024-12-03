@@ -17,7 +17,6 @@ use std::{
     io,
     net::{SocketAddr, UdpSocket},
     path::PathBuf,
-    str::FromStr,
     sync::Arc,
     time,
 };
@@ -241,7 +240,7 @@ impl Receiver {
         let files_available = {
             let mut files = Vec::new();
             for file in &files_offered {
-                let path = PathBuf::from_str(file.name()).unwrap();
+                let path = output_path.join(file.name());
                 files.push(get_files_available(&path).ok());
             }
 

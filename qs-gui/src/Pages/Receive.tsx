@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js"
+import { createSignal, onCleanup } from "solid-js"
 import Loading from "../Components/Loading"
 import { invoke } from "@tauri-apps/api/core"
 import { Event, listen } from "@tauri-apps/api/event"
@@ -7,14 +7,15 @@ import TransferFiles from "./TransferFiles"
 import { Window } from "@tauri-apps/api/window"
 
 import { sendNotification } from "@tauri-apps/plugin-notification"
-import { store } from "../App"
+import { setStore, store } from "../App"
 
-type ReceiveState =
-    | "connecting-to-server"
-    | "connecting-to-sender"
-    | "waiting-for-files"
-    | "files-offered"
-    | "downloading-files"
+export enum ReceiveState {
+    ConnectingToServer = "R_connecting-to-server",
+    ConnectingToSender = "R_connecting-to-sender",
+    WaitingForFiles = "R_waiting-for-files",
+    FilesOffered = "R_files-offered",
+    DownloadingFiles = "R_downloading-files",
+}
 
 interface FilesOfferedEvent {
     /// name, size, isDir
@@ -27,7 +28,6 @@ interface ReceiveProps {
 }
 
 function Receive(props: ReceiveProps) {
-    const [state, setState] = createSignal<ReceiveState>("connecting-to-server")
     const [files, setFiles] = createSignal<[string, number, boolean][]>([])
 
     invoke("download_files", {
@@ -37,53 +37,64 @@ function Receive(props: ReceiveProps) {
         props.onError(e)
     })
 
-    listen("server-connected", (_) => {
-        setState("connecting-to-sender")
+    const unlisten1 = listen("server-connected", (_) => {
+        setStore("currentState", ReceiveState.ConnectingToSender)
     })
 
-    listen("receiver-connected", (_) => {
-        setState("waiting-for-files")
+    const unlisten2 = listen("receiver-connected", (_) => {
+        setStore("currentState", ReceiveState.WaitingForFiles)
     })
 
-    listen("files-offered", (event: Event<FilesOfferedEvent>) => {
-        let files = event.payload.files
-        setState("files-offered")
-        setFiles(files)
+    const unlisten3 = listen(
+        "files-offered",
+        (event: Event<FilesOfferedEvent>) => {
+            let files = event.payload.files
+            setStore("currentState", ReceiveState.FilesOffered)
+            setFiles(files)
+        },
+    )
+
+    onCleanup(async () => {
+        ;(await unlisten1)()
+        ;(await unlisten2)()
+        ;(await unlisten3)()
     })
 
     return (
         <div class="receive">
-            {state() == "connecting-to-server" ? (
+            {store.currentState === ReceiveState.ConnectingToServer ? (
                 <Loading text="Connecting to server..." />
-            ) : state() == "waiting-for-files" ? (
+            ) : store.currentState === ReceiveState.WaitingForFiles ? (
                 <Loading text="Waiting for files..." />
-            ) : state() == "connecting-to-sender" ? (
+            ) : store.currentState === ReceiveState.ConnectingToSender ? (
                 <Loading text="Connecting to sender..." />
-            ) : state() == "files-offered" ? (
+            ) : store.currentState === ReceiveState.FilesOffered ? (
                 <AcceptFiles
                     files={files()}
                     acceptFiles={(path) => {
                         if (path) {
-                            setState("downloading-files")
+                            setStore(
+                                "currentState",
+                                ReceiveState.DownloadingFiles,
+                            )
                             console.log("Accepting files at", path)
                             Window.getCurrent().emit("accept-files", path)
                         } else {
                             Window.getCurrent().emit("accept-files", "")
-                            location.reload()
+                            setStore("currentState", null)
                         }
                     }}
                 />
-            ) : state() == "downloading-files" ? (
+            ) : store.currentState === ReceiveState.DownloadingFiles ? (
                 <TransferFiles
                     files={files()}
                     type="receive"
-                    onCancel={() => invoke("exit", { code: 0 })}
                     onComplete={() => {
                         sendNotification({
                             title: "Quic send",
                             body: "Transfer completed",
                         })
-                        location.reload()
+                        setStore("currentState", null)
                     }}
                 />
             ) : null}

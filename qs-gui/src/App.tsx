@@ -1,19 +1,33 @@
-import { createSignal } from "solid-js"
+import { createEffect, createSignal } from "solid-js"
 import "./App.css"
 import { createStore } from "solid-js/store"
 import Main from "./Pages/Main"
-import Receive from "./Pages/Receive"
+import Receive, { ReceiveState } from "./Pages/Receive"
 import toast, { Toaster } from "solid-toast"
-import Send from "./Pages/Send"
+import Send, { SendState } from "./Pages/Send"
 import WindowControls from "./Components/WindowControls"
 
 export interface AppState {
     roundezvousAddr: string
+    currentState: CurrentState
 }
 
 export const [store, setStore] = createStore<AppState>({
     roundezvousAddr: "209.25.141.16:1172",
+    currentState: null,
 })
+
+type CurrentState = ReceiveState | SendState | null
+
+function isRecvState(state: CurrentState): boolean {
+    return (
+        state === ReceiveState.ConnectingToServer ||
+        state === ReceiveState.ConnectingToSender ||
+        state === ReceiveState.WaitingForFiles ||
+        state === ReceiveState.FilesOffered ||
+        state === ReceiveState.DownloadingFiles
+    )
+}
 
 function App() {
     /// Receiver
@@ -53,12 +67,39 @@ function App() {
 
     disableRefresh()
 
+    createEffect(() => {
+        console.log("Current state:", store.currentState)
+        console.log("isRecvState:", isRecvState(store.currentState))
+    })
+
     return (
         <>
             <Toaster position="top-right" gutter={8} />
             <div class="app">
                 <WindowControls />
-                {code() !== null ? (
+
+                {store.currentState === null ? (
+                    <Main
+                        onEnterCode={(code) => {
+                            setCode(code)
+                            setStore(
+                                "currentState",
+                                ReceiveState.ConnectingToServer,
+                            )
+                        }}
+                        onFilesDropped={(paths) => {
+                            setFiles(paths)
+                            setStore("currentState", SendState.ChooseFiles)
+                        }}
+                    />
+                ) : isRecvState(store.currentState) ? (
+                    <Receive code={code() as string} onError={handleError} />
+                ) : (
+                    <Send files={files()} onError={handleError} />
+                )}
+
+                {/* {
+                    isRecvState(store.currentState) ? 
                     <Receive code={code() as string} onError={handleError} />
                 ) : files().length > 0 ? (
                     <Send
@@ -71,7 +112,7 @@ function App() {
                         onEnterCode={(code) => setCode(code)}
                         onFilesDropped={(files) => setFiles(files)}
                     />
-                )}
+                )} */}
             </div>
         </>
         // <WaitForReceiver code="12344678" />

@@ -93,9 +93,10 @@ async fn download_files(
     receiver
         .receive_files(
             |files| {
+                tracing::info!("files: {:?}", files);
                 window
                     .emit(
-                        "initial-download-progress",
+                        "initial-progress",
                         InitialDownloadProgress {
                             data: files.iter().map(|f| (f.0.clone(), f.1, f.2)).collect(),
                         },
@@ -190,9 +191,11 @@ async fn upload_files(
                 window.emit("files-decision", accepted).unwrap();
             },
             |initial_bytes_sent| {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                tracing::info!("initial bytes sent: {:?}", initial_bytes_sent);
                 window
                     .emit(
-                        "initial-download-progress",
+                        "initial-progress",
                         InitialDownloadProgress {
                             data: initial_bytes_sent
                                 .iter()
@@ -201,6 +204,7 @@ async fn upload_files(
                         },
                     )
                     .unwrap();
+                tracing::info!("emitted initial progress");
             },
             &mut |bytes_sent| {
                 BYTES_TRANSFERRED.fetch_add(bytes_sent, std::sync::atomic::Ordering::Relaxed);

@@ -1,97 +1,97 @@
 import { invoke } from "@tauri-apps/api/core"
 import { Event, listen } from "@tauri-apps/api/event"
-import { createSignal } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import Loading from "../Components/Loading"
 import UploadFiles from "./UploadFiles"
 import WaitForReceiver from "./WaitForReceiver"
 import TransferFiles from "./TransferFiles"
 
 import { sendNotification } from "@tauri-apps/plugin-notification"
-import { store } from "../App"
+import { setStore, store } from "../App"
 import { getFileNameFromPath } from "../utils"
+import { FileUploadCardData } from "../Components/FileUploadCard"
 
-type SendState =
-    | "choose-files"
-    | "connecting-to-server"
-    | "waiting-for-receiver"
-    | "waiting-for-file-accept"
-    | "uploading-files"
+export enum SendState {
+    ChooseFiles = "S_choose-files",
+    ConnectingToServer = "S_connecting-to-server",
+    WaitingForReceiver = "S_waiting-for-receiver",
+    WaitingForFileAccept = "S_waiting-for-file-accept",
+    UploadingFiles = "S_uploading-files",
+}
 
 interface ReceiveProps {
     files: string[]
     onError(error: string): void
-    onCancel(): void
 }
 
 function Send(props: ReceiveProps) {
     const [code, setCode] = createSignal<string | null>(null)
-    const [state, setState] = createSignal<SendState>("choose-files")
-    const [files, setFiles] = createSignal<[string, number, boolean][]>([])
+    const [files, setFiles] = createSignal<FileUploadCardData[]>([])
 
-    listen("server-connection-code", (code: Event<string>) => {
-        setState("waiting-for-receiver")
-        setCode(code.payload)
+    const unlisten1 = listen(
+        "server-connection-code",
+        (code: Event<string>) => {
+            setStore("currentState", SendState.WaitingForReceiver)
+            setCode(code.payload)
+        },
+    )
+
+    const unlisten2 = listen("receiver-connected", (_) => {
+        setStore("currentState", SendState.WaitingForFileAccept)
     })
 
-    listen("receiver-connected", (_) => {
-        console.log("receiver connected")
-        setState("waiting-for-file-accept")
-        console.log("receiver connected")
-    })
-
-    listen("files-decision", (accepted) => {
+    const unlisten3 = listen("files-decision", (accepted) => {
         if (!accepted) {
             props.onError("Receiver declined files")
             return
         }
-        setState("uploading-files")
+        setStore("currentState", SendState.UploadingFiles)
         console.log("files accepted")
+    })
+
+    onCleanup(async () => {
+        ;(await unlisten1)()
+        ;(await unlisten2)()
+        ;(await unlisten3)()
     })
 
     return (
         <div class="send">
-            {state() == "choose-files" ? (
+            {store.currentState === SendState.ChooseFiles ? (
                 <UploadFiles
-                    files={props.files}
-                    onAddFiles={(newFiles) =>
-                        setFiles([...files(), ...newFiles])
-                    }
-                    onRemoveFile={(idx) =>
-                        setFiles(files().filter((_, i) => i != idx))
-                    }
-                    onSend={() => {
+                    initialFilePaths={props.files}
+                    onSend={(fileData) => {
                         invoke("upload_files", {
                             serverAddr: store.roundezvousAddr,
-                            files: files().map(([path, _, __]) => path),
+                            files: fileData.map((file) => file.path),
                         }).catch((e: string) => {
                             props.onError(e)
                         })
 
-                        setState("connecting-to-server")
+                        setFiles(fileData)
+                        setStore("currentState", SendState.ConnectingToServer)
                     }}
-                    onCancel={() => props.onCancel()}
                 />
-            ) : state() == "connecting-to-server" ? (
+            ) : store.currentState === SendState.ConnectingToServer ? (
                 <Loading text="Connecting to server..." />
-            ) : state() == "waiting-for-receiver" ? (
+            ) : store.currentState === SendState.WaitingForReceiver ? (
                 <WaitForReceiver code={code()!} />
-            ) : state() == "waiting-for-file-accept" ? (
+            ) : store.currentState === SendState.WaitingForFileAccept ? (
                 <Loading text="Waiting for receiver to accept files..." />
-            ) : state() == "uploading-files" ? (
+            ) : store.currentState === SendState.UploadingFiles ? (
                 <TransferFiles
-                    files={files().map(([path, size, isDir]) => [
-                        getFileNameFromPath(path),
-                        size,
-                        isDir,
+                    files={files().map((fileData) => [
+                        getFileNameFromPath(fileData.path),
+                        fileData.fileInfo.sizeBytes,
+                        fileData.fileInfo.isDirectory,
                     ])}
                     type="send"
-                    onCancel={() => invoke("exit", { code: 0 })}
                     onComplete={() => {
                         sendNotification({
                             title: "Quic send",
                             body: "Transfer completed",
                         })
-                        location.reload()
+                        // location.reload()
                     }}
                 />
             ) : null}

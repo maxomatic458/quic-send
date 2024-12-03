@@ -1,101 +1,112 @@
 import { Event, listen } from "@tauri-apps/api/event"
 import { DragDropEvent } from "@tauri-apps/api/webviewWindow"
-import { createEffect, createSignal } from "solid-js"
+import {
+    Accessor,
+    createEffect,
+    createSignal,
+    onCleanup,
+    onMount,
+    Setter,
+} from "solid-js"
 import FileUploadCard, {
     FileInfo,
     FileUploadCardData,
 } from "../Components/FileUploadCard"
 import { invoke } from "@tauri-apps/api/core"
 import toast from "solid-toast"
-import { humanFileSize } from "../utils"
+import { getFileNameFromPath, humanFileSize } from "../utils"
+import { setStore, store } from "../App"
 
 interface UploadFilesProps {
-    files: string[]
-    onAddFiles(files: [string, number, boolean][]): void
-    onRemoveFile(idx: number): void
-    onSend(): void
-    onCancel(): void
+    initialFilePaths: string[]
+    onSend(filesToSend: FileUploadCardData[]): void
 }
 
 function UploadFiles(props: UploadFilesProps) {
-    // FIXME: refactor because fallback is not used
-    const [files, setFiles] = createSignal<FileUploadCardData[]>([])
-    const [cancel, setCancel] = createSignal(false)
-    const processedFiles = new Set<string>()
+    const [files, setFiles] = createSignal<Map<string, FileUploadCardData>>(
+        new Map(),
+    )
 
-    const fetchFileInfo = async (path: string) => {
+    async function fileInfo(path: string): Promise<FileInfo> {
         const fileInfo = await invoke<FileInfo>("file_info", { path })
         return fileInfo
     }
 
-    const handleNewFiles = async (newFiles: string[]) => {
-        const newFileData = await Promise.all(
-            newFiles.map(async (file) => {
-                if (!processedFiles.has(file)) {
-                    processedFiles.add(file)
-                    const fileInfo = await fetchFileInfo(file)
-                    return { path: file, fileInfo }
-                } else {
-                    toast.error("File already added")
-                }
-                return null
-            }),
-        )
+    async function handleNewFiles(newFiles: string[]) {
+        let newFilesMap: Map<string, FileUploadCardData> = new Map()
 
-        props.onAddFiles(
-            newFileData
-                .filter((file) => file !== null)
-                .map((file) => [
-                    file.path,
-                    file.fileInfo.sizeBytes,
-                    file.fileInfo.isDirectory,
-                ]),
-        )
+        console.log(newFiles)
 
-        setFiles([...files(), ...newFileData.filter((file) => file !== null)])
+        for (const path of newFiles) {
+            if (files().has(path)) {
+                console.log(files())
+                const fileName = getFileNameFromPath(path)
+                toast.error(`${fileName} already added`)
+                continue
+            }
+
+            try {
+                const info = await fileInfo(path)
+                newFilesMap.set(path, { path, fileInfo: info })
+            } catch (error) {
+                console.error(`Failed to get file info for ${path}`, error)
+            }
+        }
+
+        if (newFilesMap.size === 0) {
+            return
+        }
+
+        let updatedFiles = new Map(files())
+        newFilesMap.forEach((value, key) => updatedFiles.set(key, value))
+        setFiles(updatedFiles)
     }
 
-    handleNewFiles(props.files)
-
-    listen("tauri://drag-drop", (event: Event<DragDropEvent>) => {
-        const payload = event.payload
-        const paths: string[] = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
-        handleNewFiles(paths)
+    onMount(() => {
+        handleNewFiles(props.initialFilePaths)
     })
 
-    createEffect(() => {
-        if (cancel()) {
-            props.onCancel()
-            setCancel(false)
-        }
+    const unlisten = listen(
+        "tauri://drag-drop",
+        (event: Event<DragDropEvent>) => {
+            const payload = event.payload
+            const paths: string[] = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
+            handleNewFiles(paths)
+        },
+    )
+
+    onCleanup(async () => {
+        ;(await unlisten)()
     })
 
     return (
-        <div class="upload-files full-height">
+        <div class="upload-files">
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 Files to send
             </h3>
             <div class="file-list">
-                {files().map((file, idx) => (
+                {Array.from(files().values()).map((file, index) => (
                     <FileUploadCard
                         data={file}
-                        id={idx.toString()}
+                        id={index.toString()}
                         onRemove={() => {
-                            props.onRemoveFile(idx)
-                            setFiles(files().filter((_, i) => i != idx))
-                            processedFiles.delete(file.path)
+                            const newFiles = new Map(files())
+                            newFiles.delete(file.path)
+                            setFiles(newFiles)
 
-                            if (files().length == 0) {
-                                setCancel(true)
+                            if (newFiles.size === 0) {
+                                setStore("currentState", null)
+                                console.log("No files to send")
                             }
                         }}
                     />
                 ))}
+
                 <div class="file-size-all">
                     <span class="file-size-all-text">Total size</span>
                     <span class="file-size-all-size">
                         {humanFileSize(
-                            files().reduce(
+                            Array.from(files().values()).reduce(
                                 (acc, file) => acc + file.fileInfo.sizeBytes,
                                 0,
                             ),
@@ -109,9 +120,11 @@ function UploadFiles(props: UploadFilesProps) {
                 <button
                     class="file-choice-button file-choice-accept"
                     onClick={() => {
-                        if (props.files.length > 0) props.onSend()
+                        if (files().size > 0) {
+                            props.onSend(Array.from(files().values()))
+                        }
                     }}
-                    disabled={props.files.length == 0}
+                    disabled={files().size === 0}
                 >
                     Send
                 </button>

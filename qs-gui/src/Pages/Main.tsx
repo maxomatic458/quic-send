@@ -4,12 +4,13 @@ import { createEffect, createSignal } from "solid-js"
 import ReceiveCodeInput from "../Components/ReceiveCodeInput"
 import { DragDropEvent } from "@tauri-apps/api/webview"
 import { Event, listen } from "@tauri-apps/api/event"
+import { store } from "../App"
 
 interface MainProps {
     /// Callback for when the code is entered
     onEnterCode: (code: string) => void
-    /// Callback for when files are dropped
-    onFilesDropped: (files: string[]) => void
+    /// Callback for when files are initially dropped
+    onFilesDropped: (paths: string[]) => void
 }
 
 function Main(props: MainProps) {
@@ -21,14 +22,21 @@ function Main(props: MainProps) {
         setCodeLength(res as number)
     })
 
-    listen("tauri://drag-drop", (event: Event<DragDropEvent>) => {
-        const payload = event.payload
-        const paths = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
-        props.onFilesDropped(paths)
-    })
+    const unlisten = listen(
+        "tauri://drag-drop",
+        (event: Event<DragDropEvent>) => {
+            const payload = event.payload
+            const paths = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
+            props.onFilesDropped(paths)
+        },
+    )
 
-    createEffect(() => {
-        if (code().length == codeLength()) {
+    createEffect(async () => {
+        if (store.currentState !== null) {
+            ;(await unlisten)()
+        }
+
+        if (code().length === codeLength()!) {
             props.onEnterCode(code())
         }
     })
@@ -46,8 +54,8 @@ function Main(props: MainProps) {
                     <div class="upload-text">Drop files to send</div>
                 </div>
             </div>
-            <div class="text-center">
-                <span>enter code to receive</span>
+            <div class="text-center enter-code-text">
+                <span>Enter code to receive</span>
                 <div class="code-input">
                     <ReceiveCodeInput
                         length={codeLength()!}
@@ -55,7 +63,7 @@ function Main(props: MainProps) {
                     />
                 </div>
             </div>
-            <footer class="text-center">quic-send v0.3.0</footer>
+            <footer class="version-footer">quic-send v0.3.0</footer>
         </div>
     )
 }

@@ -6,13 +6,13 @@ interface WaitForReceiverProps {
 
 function WaitForReceiver(props: WaitForReceiverProps) {
     return (
-        <div>
+        <div class="wait-for-receiver">
             <h3 class="text-center" style={{ "margin-top": "2rem" }}>
                 Waiting for receiver to connect
             </h3>
             <div class="share-code-info">
                 <h4 style={{ "margin-bottom": "1rem" }}>
-                    Share the code or url below with the receiver
+                    Share the code below with the receiver
                 </h4>
 
                 <div
