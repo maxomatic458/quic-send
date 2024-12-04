@@ -34,7 +34,7 @@ function TransferFiles(props: TransferFilesProps) {
         [],
     )
 
-    const unlisten1 = listen(
+    const unlisten = listen(
         "initial-progress",
         (event: Event<TransferProgressEvent>) => {
             console.log("initial progress")
@@ -48,14 +48,8 @@ function TransferFiles(props: TransferFilesProps) {
         },
     )
 
-    const unlisten2 = listen("transfer-complete", (_) => {
-        // in case stuff gets out of sync somehow
-        setDownloaded(totalSize())
-    })
-
     onCleanup(async () => {
-        ;(await unlisten1)()
-        ;(await unlisten2)()
+        ;(await unlisten)()
     })
 
     setInterval(async () => {
@@ -91,6 +85,9 @@ function TransferFiles(props: TransferFilesProps) {
                 status: ProgressBarStatus.Normal,
                 progress: Math.floor(progressPercent),
             })
+
+            console.log("downloaded", bytesDownloadedAll)
+            console.log("total", totalSize())
 
             if (bytesDownloadedAll == totalSize()) {
                 props.onComplete()

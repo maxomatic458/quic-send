@@ -91,7 +91,7 @@ function Send(props: ReceiveProps) {
                             title: "Quic send",
                             body: "Transfer completed",
                         })
-                        // location.reload()
+                        setStore("currentState", null)
                     }}
                 />
             ) : null}

@@ -1,7 +1,7 @@
 [package]
 name = "qs-qui"
 version = "0.3.0"
-description = "A quic based peer-to-peer file transfer tool "
+description = "A quic based peer-to-peer file transfer tool"
 authors = ["Maxomatic458"]
 edition = "2021"
 

@@ -2,6 +2,7 @@
 name = "qs-roundezvous"
 version = "0.3.0"
 edition = "2021"
+authors = ["Maxomatic458"]
 
 [dependencies]
 tokio = { workspace = true }

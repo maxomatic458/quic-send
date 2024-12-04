@@ -147,8 +147,6 @@ async fn download_files(
         .await
         .map_err(|e| format!("failed to receive files: {}", e))?;
 
-    window.emit("transfer-complete", ()).unwrap();
-
     BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
@@ -212,8 +210,6 @@ async fn upload_files(
         )
         .await
         .map_err(|e| format!("failed to send files: {}", e))?;
-
-    window.emit("transfer-complete", ()).unwrap();
 
     BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
     Ok(())
