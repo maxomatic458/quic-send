@@ -20,7 +20,7 @@ export interface FileInfo {
 
 function FileUploadCard(props: FileUploadCardProps) {
     return (
-        <div class="file-card file-list-item">
+        <div class="file-list-item">
             <div class="file-list-item-icon">
                 {props.data.fileInfo.isDirectory ? (
                     <AiOutlineFolder size={"1.4rem"} />

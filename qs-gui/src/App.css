@@ -50,9 +50,6 @@
     flex-direction: row;
 }
 
-.main {
-}
-
 .main-upload-area {
     flex-grow: 1;
     margin-left: 3rem;
@@ -271,13 +268,6 @@ button:disabled {
 button:disabled:hover {
     background: #d3d3d3;
 }
-
-.file-card {
-    /* background: linear-gradient(90deg, #74f389 0%, rgba(0,0,0,0) 0%); */
-}
-/* .file-card {
-  width: 100%;
-} */
 
 .select-download-path {
     display: flex;
