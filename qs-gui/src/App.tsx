@@ -39,16 +39,10 @@ function App() {
     function handleError(e: string) {
         toast.error(e)
         console.error(e)
-        setCode(null)
-        setFiles([])
+        setStore("currentState", null)
     }
 
-    function cancel() {
-        setCode(null)
-        setFiles([])
-    }
-
-    const disableRefresh = () => {
+    function disableRefresh() {
         document.addEventListener("keydown", function (event) {
             // Prevent F5 or Ctrl+R (Windows/Linux) and Command+R (Mac) from refreshing the page
             if (
@@ -68,8 +62,11 @@ function App() {
     disableRefresh()
 
     createEffect(() => {
-        console.log("Current state:", store.currentState)
-        console.log("isRecvState:", isRecvState(store.currentState))
+        if (store.currentState === null) {
+            console.log("ok")
+            setCode(null)
+            setFiles([])
+        }
     })
 
     return (
@@ -97,25 +94,8 @@ function App() {
                 ) : (
                     <Send files={files()} onError={handleError} />
                 )}
-
-                {/* {
-                    isRecvState(store.currentState) ? 
-                    <Receive code={code() as string} onError={handleError} />
-                ) : files().length > 0 ? (
-                    <Send
-                        files={files()}
-                        onError={handleError}
-                        onCancel={cancel}
-                    />
-                ) : (
-                    <Main
-                        onEnterCode={(code) => setCode(code)}
-                        onFilesDropped={(files) => setFiles(files)}
-                    />
-                )} */}
             </div>
         </>
-        // <WaitForReceiver code="12344678" />
     )
 }
 

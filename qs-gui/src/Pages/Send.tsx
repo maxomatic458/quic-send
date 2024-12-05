@@ -10,6 +10,7 @@ import { sendNotification } from "@tauri-apps/plugin-notification"
 import { setStore, store } from "../App"
 import { getFileNameFromPath } from "../utils"
 import { FileUploadCardData } from "../Components/FileUploadCard"
+import toast from "solid-toast"
 
 export enum SendState {
     ChooseFiles = "S_choose-files",
@@ -19,12 +20,12 @@ export enum SendState {
     UploadingFiles = "S_uploading-files",
 }
 
-interface ReceiveProps {
+interface SendProps {
     files: string[]
     onError(error: string): void
 }
 
-function Send(props: ReceiveProps) {
+function Send(props: SendProps) {
     const [code, setCode] = createSignal<string | null>(null)
     const [files, setFiles] = createSignal<FileUploadCardData[]>([])
 
@@ -40,13 +41,15 @@ function Send(props: ReceiveProps) {
         setStore("currentState", SendState.WaitingForFileAccept)
     })
 
-    const unlisten3 = listen("files-decision", (accepted) => {
-        if (!accepted) {
-            props.onError("Receiver declined files")
-            return
+    const unlisten3 = listen("files-decision", (accepted: Event<boolean>) => {
+        console.log(accepted)
+        if (!accepted.payload) {
+            console.log("here")
+            toast.error("Files rejected")
+            // setStore("currentState", null)
+        } else {
+            setStore("currentState", SendState.UploadingFiles)
         }
-        setStore("currentState", SendState.UploadingFiles)
-        console.log("files accepted")
     })
 
     onCleanup(async () => {

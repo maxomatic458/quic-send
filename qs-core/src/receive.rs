@@ -186,10 +186,17 @@ impl Receiver {
         )))
     }
 
-    /// Wait for the sender to close the connection
+    /// Close the connection
     pub async fn close(&mut self) -> Result<(), ReceiveError> {
         self.conn.close(0u32.into(), &[0]);
         self.endpoint.close(0u32.into(), &[0]);
+        Ok(())
+    }
+
+    /// Wait for the other peer to close the connection
+    pub async fn wait_for_close(&mut self) -> Result<(), ReceiveError> {
+        self.conn.closed().await;
+        self.endpoint.wait_idle().await;
         Ok(())
     }
 
@@ -233,6 +240,8 @@ impl Receiver {
             Some(path) => path,
             None => {
                 send_packet(ReceiverToSender::RejectFiles, &self.conn).await?;
+                // Wait for the sender to acknowledge the rejection
+                self.wait_for_close().await?;
                 return Err(ReceiveError::FilesRejected);
             }
         };

@@ -55,9 +55,11 @@ function TransferFiles(props: TransferFilesProps) {
     onCleanup(async () => {
         ;(await unlisten1)()
         ;(await unlisten2)()
+
+        clearInterval(id)
     })
 
-    setInterval(async () => {
+    const id = setInterval(async () => {
         let downloaded: number = await invoke("bytes_transferred")
         setDownloaded(downloaded)
         console.log(downloaded)

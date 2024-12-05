@@ -153,10 +153,15 @@ impl Sender {
     }
 
     /// Close the connection
-    pub async fn wait_for_close(&mut self) -> Result<(), SendError> {
+    pub async fn close(&mut self) {
+        self.conn.close(0u32.into(), &[0]);
+        self.endpoint.close(0u32.into(), &[0]);
+    }
+
+    /// Wait for the other peer to close the connection
+    pub async fn wait_for_close(&mut self) {
         self.conn.closed().await;
         self.endpoint.wait_idle().await;
-        Ok(())
     }
 
     /// Send files
@@ -216,6 +221,7 @@ impl Sender {
             }
             ReceiverToSender::RejectFiles => {
                 files_decision_callback(false);
+                self.close().await;
                 return Err(SendError::FilesRejected);
             }
             p => return Err(SendError::UnexpectedDataPacket(p)),
@@ -262,7 +268,7 @@ impl Sender {
         }
 
         send.shutdown().await?;
-        self.wait_for_close().await?;
+        self.wait_for_close().await;
         Ok(())
     }
 }

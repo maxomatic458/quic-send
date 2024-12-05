@@ -8,7 +8,7 @@ use std::{
 use qs_core::{
     common::FilesAvailable,
     receive::{roundezvous_connect, Receiver, ReceiverArgs},
-    send::{roundezvous_announce, Sender, SenderArgs},
+    send::{roundezvous_announce, SendError, Sender, SenderArgs},
     utils, CODE_LEN, STUN_SERVERS,
 };
 use serde::Serialize;
@@ -93,7 +93,6 @@ async fn download_files(
     receiver
         .receive_files(
             |files| {
-                tracing::info!("files: {:?}", files);
                 window
                     .emit(
                         "initial-progress",
@@ -121,7 +120,8 @@ async fn download_files(
                 let output_path = Arc::new(RwLock::new(None));
                 let accepted_clone = output_path.clone();
                 window.listen("accept-files", move |event| {
-                    if !event.payload().is_empty() {
+                    println!("event: {:?}", event);
+                    if event.payload() != "\"\"" {
                         let path_string = event.payload();
                         // for some reason the path here starts and ends with a slash
                         let path_string = &path_string[1..path_string.len() - 1];
@@ -183,7 +183,7 @@ async fn upload_files(
 
     window.emit("receiver-connected", ()).unwrap();
 
-    sender
+    let err = sender
         .send_files(
             || {},
             |accepted| {
@@ -191,7 +191,6 @@ async fn upload_files(
             },
             |initial_bytes_sent| {
                 std::thread::sleep(std::time::Duration::from_millis(100));
-                tracing::info!("initial bytes sent: {:?}", initial_bytes_sent);
                 window
                     .emit(
                         "initial-progress",
@@ -203,14 +202,20 @@ async fn upload_files(
                         },
                     )
                     .unwrap();
-                tracing::info!("emitted initial progress");
             },
             &mut |bytes_sent| {
                 BYTES_TRANSFERRED.fetch_add(bytes_sent, std::sync::atomic::Ordering::Relaxed);
             },
         )
-        .await
-        .map_err(|e| format!("failed to send files: {}", e))?;
+        .await;
+
+    if let Err(SendError::FilesRejected) = err {
+        // Treat this as a success to avoid double error message.
+        // (handled by the frontend already)
+        return Ok(());
+    }
+
+    err.map_err(|e| format!("failed to send files: {}", e))?;
 
     BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
     window.emit("transfer-done", ()).unwrap();
@@ -226,7 +231,6 @@ struct FileInfo {
 
 #[tauri::command(async)]
 async fn file_info(path: PathBuf) -> Result<FileInfo, String> {
-    tracing::info!("sdads");
     let mut size = 0;
 
     let is_directory = path.is_dir();
