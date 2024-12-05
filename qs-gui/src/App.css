@@ -4,8 +4,11 @@
     line-height: 24px;
     font-weight: 400;
 
-    color: #0f0f0f;
-    background-color: #f6f6f6;
+    --font-color: #0f0f0f;
+    --background: #f6f6f6;
+
+    color: var(--font-color);
+    background-color: var(--background);
 
     font-synthesis: none;
     text-rendering: optimizeLegibility;
@@ -142,6 +145,8 @@
 
 .file-choice-button {
     border-radius: 5px;
+    margin-bottom: 1.5rem;
+
     padding: 1rem 2rem;
     font-weight: bold;
     border: none;
@@ -309,7 +314,7 @@ button:disabled:hover {
 }
 
 .window-controls {
-    /* background: #f6f6f6; */
+    background: var(--background);
     height: var(--window-control-height);
     display: flex;
     justify-content: flex-end;

@@ -43,7 +43,7 @@ function AcceptFiles(props: AcceptFilesProps) {
                                 directory: true,
                                 multiple: false,
                             }).then((res) => {
-                                if (res !== null) {
+                                if (res) {
                                     setDownloadPath(res)
                                 }
                             })
