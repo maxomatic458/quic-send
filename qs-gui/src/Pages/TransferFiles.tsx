@@ -4,7 +4,6 @@ import FileTransferCard from "../Components/FileTransferCard"
 import { humanFileSize } from "../utils"
 import { ProgressBarStatus, Window } from "@tauri-apps/api/window"
 import { invoke } from "@tauri-apps/api/core"
-import { setStore } from "../App"
 
 const PROGRESS_CALL_INTERVAL_MS = 80
 
