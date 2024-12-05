@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import { Event, listen } from "@tauri-apps/api/event"
-import { createEffect, createSignal, onCleanup } from "solid-js"
+import { createSignal, onCleanup } from "solid-js"
 import Loading from "../Components/Loading"
 import UploadFiles from "./UploadFiles"
 import WaitForReceiver from "./WaitForReceiver"

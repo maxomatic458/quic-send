@@ -34,7 +34,7 @@ function TransferFiles(props: TransferFilesProps) {
         [],
     )
 
-    const unlisten = listen(
+    const unlisten1 = listen(
         "initial-progress",
         (event: Event<TransferProgressEvent>) => {
             console.log("initial progress")
@@ -48,13 +48,19 @@ function TransferFiles(props: TransferFilesProps) {
         },
     )
 
+    const unlisten2 = listen("transfer-done", (_) => {
+        setDownloaded(totalSize() - initialProgress())
+    })
+
     onCleanup(async () => {
-        ;(await unlisten)()
+        ;(await unlisten1)()
+        ;(await unlisten2)()
     })
 
     setInterval(async () => {
         let downloaded: number = await invoke("bytes_transferred")
         setDownloaded(downloaded)
+        console.log(downloaded)
     }, PROGRESS_CALL_INTERVAL_MS)
 
     createEffect(
