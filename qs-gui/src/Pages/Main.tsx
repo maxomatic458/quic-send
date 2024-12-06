@@ -42,7 +42,7 @@ function Main(props: MainProps) {
     })
 
     return (
-        <div class="flex flex-col">
+        <div class="main flex flex-col">
             <h2 class="text-center" style={{ "margin-top": "2rem" }}>
                 quic send
             </h2>
