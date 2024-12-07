@@ -49,7 +49,7 @@ jobs:
 
       - name: install frontend dependencies
         run: | 
-          node i -g bun 
+          npm i -g bun 
           bun install
 
 
