@@ -1,4 +1,4 @@
-name: Release-GUI
+name: Release-UI
 
 on:
   release:
