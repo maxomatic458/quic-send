@@ -3360,7 +3360,7 @@ dependencies = [
 
 [[package]]
 name = "qs-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-compression",
  "clap",
@@ -3399,7 +3399,7 @@ dependencies = [
 
 [[package]]
 name = "qs-qui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "lazy_static",
  "qs-core",
@@ -3418,7 +3418,7 @@ dependencies = [
 
 [[package]]
 name = "qs-roundezvous"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "bincode",
  "clap",
