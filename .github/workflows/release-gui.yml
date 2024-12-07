@@ -13,13 +13,13 @@ jobs:
       matrix:
         include:
           - platform: 'macos-latest' # for Arm based macs (M1 and above).
-            args: '--target aarch64-apple-darwin'
+            args: '--target aarch64-apple-darwin --package qs-gui'
           - platform: 'macos-latest' # for Intel based macs.
-            args: '--target x86_64-apple-darwin'
+            args: '--target x86_64-apple-darwin --package qs-gui'
           - platform: 'ubuntu-22.04' # for Tauri v1 you could replace this with ubuntu-20.04.
-            args: ''
+            args: '--package qs-gui'
           - platform: 'windows-latest'
-            args: ''
+            args: '--package qs-gui'
 
     runs-on: ${{ matrix.platform }}
     steps:
