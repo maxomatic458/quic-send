@@ -50,6 +50,7 @@ jobs:
       - name: install frontend dependencies
         run: | 
           npm i -g bun 
+          cd qs-gui
           bun install
 
 
