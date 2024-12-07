@@ -1,6 +1,8 @@
 [package]
 name = "qs-cli"
-version = "0.3.0"
+version = "0.3.1"
+description = "A quic based peer-to-peer file transfer tool"
+authors = ["Maxomatic458"]
 edition = "2021"
 
 [dependencies]
@@ -17,6 +19,7 @@ indicatif = "0.17.8"
 dialoguer = "0.11.0"
 colored = "2.1.0"
 color-eyre = "0.6.3"
+local-ip-address = { workspace = true }
 
 [[bin]]
 path = "src/main.rs"

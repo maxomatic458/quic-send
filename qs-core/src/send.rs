@@ -153,20 +153,27 @@ impl Sender {
     }
 
     /// Close the connection
-    pub async fn wait_for_close(&mut self) -> Result<(), SendError> {
+    pub async fn close(&mut self) {
+        self.conn.close(0u32.into(), &[0]);
+        self.endpoint.close(0u32.into(), &[0]);
+    }
+
+    /// Wait for the other peer to close the connection
+    pub async fn wait_for_close(&mut self) {
         self.conn.closed().await;
         self.endpoint.wait_idle().await;
-        Ok(())
     }
 
     /// Send files
     /// # Arguments
     /// * `wait_for_other_peer_to_accept_files_callback` - Callback to wait for the other peer to accept the files
+    /// * `files_decision_callback` - Callback with the decision of the other peer to accept the files
     /// * `initial_progress_callback` - Callback with the initial progress of each file to send (name, current, total)
     /// * `write_callback` - Callback every time data is written to the connection
     pub async fn send_files(
         &mut self,
         mut wait_for_other_peer_to_accept_files_callback: impl FnMut(),
+        mut files_decision_callback: impl FnMut(bool),
         mut initial_progress_callback: impl FnMut(&[(String, u64, u64)]),
         write_callback: &mut impl FnMut(u64),
     ) -> Result<(), SendError> {
@@ -208,8 +215,15 @@ impl Sender {
         wait_for_other_peer_to_accept_files_callback();
 
         let to_skip = match receive_packet::<ReceiverToSender>(&self.conn).await? {
-            ReceiverToSender::AcceptFilesSkip { files } => files,
-            ReceiverToSender::RejectFiles => return Err(SendError::FilesRejected),
+            ReceiverToSender::AcceptFilesSkip { files } => {
+                files_decision_callback(true);
+                files
+            }
+            ReceiverToSender::RejectFiles => {
+                files_decision_callback(false);
+                self.close().await;
+                return Err(SendError::FilesRejected);
+            }
             p => return Err(SendError::UnexpectedDataPacket(p)),
         };
 
@@ -254,7 +268,7 @@ impl Sender {
         }
 
         send.shutdown().await?;
-        self.wait_for_close().await?;
+        self.wait_for_close().await;
         Ok(())
     }
 }

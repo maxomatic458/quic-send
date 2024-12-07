@@ -1,0 +1,17 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "windows": ["main"],
+    "permissions": [
+        "core:default",
+        "core:window:allow-maximize",
+        "core:window:allow-unmaximize",
+        "core:window:allow-minimize",
+        "core:window:allow-start-dragging",
+        "shell:allow-open",
+        "core:window:allow-set-progress-bar",
+        "notification:default",
+        "dialog:default"
+    ]
+}

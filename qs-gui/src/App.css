@@ -1,0 +1,343 @@
+:root {
+    font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 400;
+
+    --font-color: #0f0f0f;
+    --background: #f6f6f6;
+
+    color: var(--font-color);
+    background-color: var(--background);
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+    --loading-bar-color: #a8edcc;
+    --window-control-height: 1.9rem;
+
+    --color-primary: #00b7c3;
+    --color-loading-spinner: orange;
+}
+
+* {
+    margin: 0;
+    user-select: none;
+    scrollbar-width: none;
+}
+
+.full-height {
+    height: 100vh;
+}
+
+.flex {
+    display: flex;
+}
+
+.main {
+    height: calc(100vh);
+    width: 100vw;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.flex-row {
+    flex-direction: row;
+}
+
+.main-upload-area {
+    flex-grow: 1;
+    margin-left: 3rem;
+    margin-right: 3rem;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    background: #d9f0f2;
+    border: 3px dashed var(--color-primary);
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.code-input {
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 1rem;
+    margin-top: 0.6rem;
+}
+
+.inputs > input {
+    width: 1.2rem;
+    height: 1.5rem;
+    margin-left: 2px;
+    margin-right: 2px;
+    color: var(--color-primary);
+    font-weight: bold;
+    font-size: large;
+    text-align: center;
+    font-family: monospace;
+}
+
+.upload-icon {
+    color: var(--color-primary);
+}
+
+.upload-text {
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+    color: var(--color-primary);
+    font-weight: bold;
+}
+
+.loading {
+    width: fit-content;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    -ms-transform: translate(-50%, -50%);
+}
+
+.share-code-info {
+    /* background: red; */
+    width: fit-content;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    -ms-transform: translate(-50%, -50%);
+}
+
+.share-code {
+    font-family: monospace;
+    font-size: 1.8rem;
+    color: var(--color-primary);
+    font-weight: bold;
+    user-select: all;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.spinner {
+    color: var(--color-loading-spinner);
+}
+
+.file-choice {
+    margin: 1.5rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    height: auto;
+}
+
+.file-choice-button {
+    border-radius: 5px;
+    margin-bottom: 1.5rem;
+
+    padding: 1rem 2rem;
+    font-weight: bold;
+    border: none;
+    color: #ffffff;
+}
+.file-choice-accept {
+    background: rgb(37, 230, 34);
+}
+
+.file-choice-reject {
+    background: rgb(249, 54, 33);
+}
+
+.file-choice-accept:hover {
+    background: rgba(37, 230, 34, 0.8);
+}
+
+.file-choice-reject:hover {
+    background: rgba(249, 54, 33, 0.8);
+}
+
+button:hover {
+    cursor: pointer;
+}
+
+.accept-files {
+    justify-content: space-between;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 0.25rem);
+}
+
+.transfer-files {
+    justify-content: space-between;
+    display: flex;
+    flex-direction: column;
+}
+
+.upload-files {
+    justify-content: space-between;
+    display: flex;
+    flex-direction: column;
+}
+
+.wait-for-receiver {
+    display: flex;
+    justify-content: center;
+}
+
+.file-list {
+    /* justify items in the center */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    /* flex-grow: 1; */
+}
+
+.file-list-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.5rem;
+}
+
+.file-list-item {
+    padding: 1.5rem;
+    display: flex;
+    max-width: 50rem;
+    width: 80%;
+    margin-bottom: 0.5rem;
+    margin-top: 0.5rem;
+    flex-grow: 0;
+    box-shadow: rgba(0, 0, 0, 0.15) 0px 0px 0px 1px;
+}
+
+.file-list-item:hover {
+    cursor: pointer;
+}
+
+.file-list-item-text {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.file-size-all {
+    margin-top: 1rem;
+}
+
+.file-size-all-text {
+    margin-right: 0.5rem;
+}
+
+.file-size-all-size {
+    font-weight: bold;
+}
+
+.cancel-div {
+    margin: 1.5rem 1.5rem;
+    margin-bottom: 1.5rem;
+    /* margin-left: 50%; */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.send-div {
+    margin: 1.5rem 1.5rem;
+    margin-bottom: 1.5rem;
+    /* margin-left: 50%; */
+    margin-left: auto;
+    margin-right: auto;
+    /* background: red; */
+}
+
+button:disabled {
+    background: #d3d3d3;
+    cursor: not-allowed;
+}
+
+button:disabled:hover {
+    background: #d3d3d3;
+}
+
+.select-download-path {
+    display: flex;
+    flex-direction: column;
+    margin-top: 1rem;
+}
+
+.select-path-div > button {
+    margin-top: 1rem;
+    font-weight: bold;
+    padding: 1rem;
+    border: none;
+    box-shadow: rgba(0, 0, 0, 0.15) 0px 0px 0px 1px;
+}
+
+.remove-file-upload {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.remove-file-upload > button {
+    display: flex;
+    scale: 1.4;
+    align-items: center;
+    /* margin: 0; */
+    height: 24px;
+    border: none;
+    background: transparent;
+}
+
+.remove-file-upload > button:hover {
+    color: rgb(249, 54, 33);
+}
+
+.window-controls {
+    background: var(--background);
+    height: var(--window-control-height);
+    display: flex;
+    justify-content: flex-end;
+    width: 100vw;
+    position: absolute;
+    position: fixed;
+    z-index: 100;
+    /* right: 0; */
+}
+
+.window-control-button > button {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: transparent;
+    border: none;
+    width: 2.9rem;
+    height: 100%;
+}
+
+.window-control-button > button:hover {
+    background: #d3d3d3;
+}
+
+.close-window-button > button:hover {
+    background: #ff3b30;
+    color: white;
+}
+
+.enter-code-text {
+    font-weight: bold;
+}
+
+.version-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-right: 0.5rem;
+    font-family: monospace;
+}

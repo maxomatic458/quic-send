@@ -17,7 +17,6 @@ use std::{
     io,
     net::{SocketAddr, UdpSocket},
     path::PathBuf,
-    str::FromStr,
     sync::Arc,
     time,
 };
@@ -152,8 +151,6 @@ pub struct Receiver {
 pub struct ReceiverArgs {
     /// Resume interrupted transfer
     pub resume: bool,
-    /// Output path,
-    pub output_path: PathBuf,
 }
 
 impl Receiver {
@@ -189,22 +186,29 @@ impl Receiver {
         )))
     }
 
-    /// Wait for the sender to close the connection
+    /// Close the connection
     pub async fn close(&mut self) -> Result<(), ReceiveError> {
         self.conn.close(0u32.into(), &[0]);
         self.endpoint.close(0u32.into(), &[0]);
         Ok(())
     }
 
+    /// Wait for the other peer to close the connection
+    pub async fn wait_for_close(&mut self) -> Result<(), ReceiveError> {
+        self.conn.closed().await;
+        self.endpoint.wait_idle().await;
+        Ok(())
+    }
+
     /// Receive files
     /// # Arguments
     /// * `initial_progress_callback` - Callback with the initial progress of each file to send (name, current, total)
-    /// * `accept_files_callback` - Callback to accept or reject the files
+    /// * `accept_files_callback` - Callback to accept or reject the files (Some(path) to accept, None to reject)
     /// * `read_callback` - Callback every time data is written to disk
     pub async fn receive_files(
         &mut self,
         mut initial_progress_callback: impl FnMut(&[(String, u64, u64)]),
-        mut accept_files_callback: impl FnMut(&[FilesAvailable]) -> bool,
+        mut accept_files_callback: impl FnMut(&[FilesAvailable]) -> Option<PathBuf>,
         read_callback: &mut impl FnMut(u64),
     ) -> Result<(), ReceiveError> {
         match receive_packet::<SenderToReceiver>(&self.conn).await? {
@@ -232,15 +236,20 @@ impl Receiver {
             p => return Err(ReceiveError::UnexpectedDataPacket(p)),
         };
 
-        if !accept_files_callback(&files_offered) {
-            send_packet(ReceiverToSender::RejectFiles, &self.conn).await?;
-            return Ok(());
-        }
+        let output_path = match accept_files_callback(&files_offered) {
+            Some(path) => path,
+            None => {
+                send_packet(ReceiverToSender::RejectFiles, &self.conn).await?;
+                // Wait for the sender to acknowledge the rejection
+                self.wait_for_close().await?;
+                return Err(ReceiveError::FilesRejected);
+            }
+        };
 
         let files_available = {
             let mut files = Vec::new();
             for file in &files_offered {
-                let path = PathBuf::from_str(file.name()).unwrap();
+                let path = output_path.join(file.name());
                 files.push(get_files_available(&path).ok());
             }
 
@@ -300,7 +309,7 @@ impl Receiver {
         for file in to_receive.into_iter().flatten() {
             match file {
                 FileSendRecvTree::File { name, skip, size } => {
-                    let path = self.args.output_path.join(name);
+                    let path = output_path.join(name);
                     let mut file = tokio::fs::OpenOptions::new()
                         .write(true)
                         .create(true)
@@ -312,7 +321,7 @@ impl Receiver {
                     file.shutdown().await?;
                 }
                 FileSendRecvTree::Dir { name, files } => {
-                    let path = self.args.output_path.join(name);
+                    let path = output_path.join(name);
 
                     if !path.exists() {
                         std::fs::create_dir(&path)?;
