@@ -44,9 +44,8 @@ function Send(props: SendProps) {
     const unlisten3 = listen("files-decision", (accepted: Event<boolean>) => {
         console.log(accepted)
         if (!accepted.payload) {
-            console.log("here")
             toast.error("Files rejected")
-            // setStore("currentState", null)
+            setStore("currentState", null)
         } else {
             setStore("currentState", SendState.UploadingFiles)
         }

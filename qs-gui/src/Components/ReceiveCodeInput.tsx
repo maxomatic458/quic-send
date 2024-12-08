@@ -1,5 +1,4 @@
-import { createEffect, createSignal, onMount } from "solid-js"
-import { redirect } from "@solidjs/router"
+import { createSignal } from "solid-js"
 
 interface ReceiveCodeInputProps {
     /// Length of the receive code

@@ -1,13 +1,6 @@
 import { Event, listen } from "@tauri-apps/api/event"
 import { DragDropEvent } from "@tauri-apps/api/webviewWindow"
-import {
-    Accessor,
-    createEffect,
-    createSignal,
-    onCleanup,
-    onMount,
-    Setter,
-} from "solid-js"
+import { createSignal, onCleanup, onMount } from "solid-js"
 import FileUploadCard, {
     FileInfo,
     FileUploadCardData,
@@ -15,7 +8,7 @@ import FileUploadCard, {
 import { invoke } from "@tauri-apps/api/core"
 import toast from "solid-toast"
 import { getFileNameFromPath, humanFileSize } from "../utils"
-import { setStore, store } from "../App"
+import { setStore } from "../App"
 
 interface UploadFilesProps {
     initialFilePaths: string[]
