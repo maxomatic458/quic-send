@@ -3,6 +3,11 @@ name = "qs-core"
 version = "0.3.0"
 edition = "2021"
 authors = ["Maxomatic458"]
+description = "quic send core library"
+repository = "https://github.com/maxomatic458/quic-send"
+readme = "../README.md"
+license = "MIT"
+keywords = ["quic", "file-transfer", "peer-to-peer"]
 
 [dependencies]
 tokio = { workspace = true }

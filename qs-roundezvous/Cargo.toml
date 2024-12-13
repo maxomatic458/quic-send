@@ -12,7 +12,7 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 bincode = { workspace = true }
 rand = { workspace = true }
-qs-core = { path = "../qs-core" }
+qs-core = { workspace = true }
 clap = { version = "4.5.16", features = ["derive"] }
 
 [[bin]]

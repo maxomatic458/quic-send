@@ -4,6 +4,10 @@ version = "0.3.1"
 description = "A quic based peer-to-peer file transfer tool"
 authors = ["Maxomatic458"]
 edition = "2021"
+repository = "https://github.com/maxomatic458/quic-send"
+readme = "../README.md"
+license = "MIT"
+keywords = ["quic", "file-transfer", "peer-to-peer"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -13,7 +17,7 @@ tracing-subscriber = { workspace = true }
 quinn = { workspace = true }
 clap = { workspace = true }
 semver = { workspace = true }
-qs-core = { path = "../qs-core" }
+qs-core = { workspace = true }
 async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 indicatif = "0.17.8"
 dialoguer = "0.11.0"
