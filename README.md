@@ -15,6 +15,16 @@ involved is a STUN server (Google STUN) and an optional roundezvous server (incl
 - **Transfer files & Folders**
 - **No port forwarding required**: quic-send makes use of [UDP hole punching](https://en.wikipedia.org/wiki/UDP_hole_punching) to establish a connection between the two peers, without requiring open ports.
 
+## Installation
+
+The cli version can be downloaded from crates.io:
+
+```bash
+cargo install qs-cli
+```
+
+Downloads to the gui version (as well as the cli version) can be found on the [releases page](https://github.com/maxomatic458/quic-send/releases)
+
 ## Usage
 
 ### Sending files
@@ -42,7 +52,6 @@ $ qs receive 123456
 | Resumable transfers | ✅ | ❌ | ✅ |
 | Transfer files & Folders | ✅ | ✅ | ✅ |
 | (fallback) Relay server | ❌ | ✅ | ✅ |
-
 
 * While it is possible in Magic Wormhole, establishing a direct connection is very unlikely (as the connection tries to establish a direct TCP connection), quick send uses UDP hole punching instead which is way more reliable and works for most networks.
 
