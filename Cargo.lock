@@ -3369,7 +3369,7 @@ dependencies = [
  "dialoguer",
  "indicatif",
  "local-ip-address",
- "qs-core",
+ "qs-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "quinn",
  "semver",
  "thiserror 1.0.63",
@@ -3398,11 +3398,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "qs-core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1c129e5d5871797f31b56fd73d9d97d171792c52d943ac47de901b1bed96ac6"
+dependencies = [
+ "async-compression",
+ "bincode",
+ "clap",
+ "quinn",
+ "rcgen",
+ "rustls",
+ "semver",
+ "serde",
+ "stunclient",
+ "thiserror 1.0.63",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "qs-core"
+version = "0.3.0"
+source = "git+https://github.com/maxomatic458/quic-send#2ecda788956676e275dc9c2bb50b920fea97f87b"
+dependencies = [
+ "async-compression",
+ "bincode",
+ "clap",
+ "quinn",
+ "rcgen",
+ "rustls",
+ "semver",
+ "serde",
+ "stunclient",
+ "thiserror 1.0.63",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "qs-gui"
 version = "0.3.1"
 dependencies = [
  "lazy_static",
- "qs-core",
+ "qs-core 0.3.0",
  "serde",
  "serde_json",
  "tauri",
@@ -3422,7 +3461,7 @@ version = "0.3.1"
 dependencies = [
  "bincode",
  "clap",
- "qs-core",
+ "qs-core 0.3.0 (git+https://github.com/maxomatic458/quic-send)",
  "quinn",
  "rand 0.8.5",
  "thiserror 1.0.63",
