@@ -9,6 +9,10 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
+# Its not possible to use a path here if the qs-cli package needs to be published to crates.io
+# qs-core = { git = "https://github.com/maxomatic458/quic-send", version = "0.3.0" }
+qs-core = { path = "./qs-core", version = "0.3.0"}
+
 quinn = { version = "0.11.4", features = ["runtime-tokio"] }
 rustls = { version = "0.23.12", default-features = false, features = ["ring"] }
 rcgen = "0.13.1"

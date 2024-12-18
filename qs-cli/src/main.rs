@@ -200,6 +200,7 @@ async fn main() -> color_eyre::Result<()> {
                         if let Some(pb) = &mut *rc_clone.borrow_mut() {
                             pb.update(last_sent);
                         }
+                        true
                     },
                 )
                 .await
@@ -235,6 +236,7 @@ async fn main() -> color_eyre::Result<()> {
                         if let Some(pb) = &mut *progress_bars.borrow_mut() {
                             pb.update(last_received);
                         }
+                        true
                     },
                 )
                 .await

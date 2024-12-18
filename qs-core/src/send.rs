@@ -17,13 +17,16 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
 /// Generic send function
+/// # Returns
+/// * `Some(false)`: if the transfer should be interrupted.
+/// * `Some(true)`: to continue the transfer.
 pub async fn send_file<S, R>(
     send: &mut S,
     file: &mut R,
     skip: u64,
     size: u64,
-    write_callback: &mut impl FnMut(u64),
-) -> std::io::Result<()>
+    write_callback: &mut impl FnMut(u64) -> bool,
+) -> std::io::Result<bool>
 where
     S: tokio::io::AsyncWriteExt + Unpin,
     R: tokio::io::AsyncReadExt + tokio::io::AsyncSeekExt + Unpin,
@@ -47,18 +50,23 @@ where
         send.write_all(&buf[..n]).await?;
         read += n as u64;
 
-        write_callback(n as u64);
+        if !write_callback(n as u64) {
+            return Ok(false);
+        }
     }
 
-    Ok(())
+    Ok(true)
 }
 
+/// # Returns
+/// * `Some(false)`: if the transfer should be interrupted.
+/// * `Some(true)`: to continue the transfer.
 pub fn send_directory<S>(
     send: &mut S,
     root_path: &std::path::Path,
     files: &[FileSendRecvTree],
-    write_callback: &mut impl FnMut(u64),
-) -> std::io::Result<()>
+    write_callback: &mut impl FnMut(u64) -> bool,
+) -> std::io::Result<bool>
 where
     S: tokio::io::AsyncWriteExt + Unpin + Send,
 {
@@ -66,25 +74,33 @@ where
         match file {
             FileSendRecvTree::File { name, skip, size } => {
                 let path = root_path.join(name);
+                let mut continues = true;
                 tokio::task::block_in_place(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
                         let mut file = tokio::fs::OpenOptions::new().read(true).open(&path).await?;
 
-                        send_file(send, &mut file, *skip, *size, write_callback).await?;
+                        continues =
+                            send_file(send, &mut file, *skip, *size, write_callback).await?;
                         file.shutdown().await?;
                         Ok::<(), std::io::Error>(())
                     })
                 })?;
+
+                if !continues {
+                    return Ok(false);
+                }
             }
             FileSendRecvTree::Dir { name, files } => {
                 let root_path = root_path.join(name);
-                send_directory(send, &root_path, files, write_callback)?;
+                if !send_directory(send, &root_path, files, write_callback)? {
+                    return Ok(false);
+                }
             }
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 #[derive(Debug, Error)]
@@ -169,14 +185,18 @@ impl Sender {
     /// * `wait_for_other_peer_to_accept_files_callback` - Callback to wait for the other peer to accept the files
     /// * `files_decision_callback` - Callback with the decision of the other peer to accept the files
     /// * `initial_progress_callback` - Callback with the initial progress of each file to send (name, current, total)
-    /// * `write_callback` - Callback every time data is written to the connection
+    /// * `write_callback` - Callback every time data is written to the connection, if the callback returns false, the transfer will be cancelled
+    ///
+    /// # Returns
+    /// * `Some(true)`: if the transfer finished.
+    /// * `Some(false)`: if the transfer was user interrupted.
     pub async fn send_files(
         &mut self,
         mut wait_for_other_peer_to_accept_files_callback: impl FnMut(),
         mut files_decision_callback: impl FnMut(bool),
         mut initial_progress_callback: impl FnMut(&[(String, u64, u64)]),
-        write_callback: &mut impl FnMut(u64),
-    ) -> Result<(), SendError> {
+        write_callback: &mut impl FnMut(u64) -> bool,
+    ) -> Result<bool, SendError> {
         send_packet(
             SenderToReceiver::ConnRequest {
                 version_num: QS_VERSION.to_string(),
@@ -253,23 +273,36 @@ impl Sender {
         let send = self.conn.open_uni().await?;
         let mut send = GzipEncoder::new(send);
 
+        let mut finished = true;
+
         for (path, file) in self.args.files.iter().zip(to_send) {
             if let Some(file) = file {
                 match file {
                     FileSendRecvTree::File { skip, size, .. } => {
                         let mut file = tokio::fs::File::open(&path).await?;
-                        send_file(&mut send, &mut file, skip, size, write_callback).await?;
+                        if !send_file(&mut send, &mut file, skip, size, write_callback).await? {
+                            finished = false;
+                            break;
+                        }
                     }
                     FileSendRecvTree::Dir { files, .. } => {
-                        send_directory(&mut send, path, &files, write_callback)?;
+                        if !send_directory(&mut send, path, &files, write_callback)? {
+                            finished = false;
+                            break;
+                        }
                     }
                 }
             }
         }
 
         send.shutdown().await?;
-        self.wait_for_close().await;
-        Ok(())
+
+        if finished {
+            self.wait_for_close().await;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 
