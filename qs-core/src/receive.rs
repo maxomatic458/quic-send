@@ -5,21 +5,11 @@ use crate::{
         get_files_available, receive_packet, send_packet, FileSendRecvTree, FilesAvailable,
         PacketRecvError,
     },
-    packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
-    unsafe_client_config,
-    utils::self_signed_cert,
-    BUF_SIZE, CODE_LEN, KEEP_ALIVE_INTERVAL_SECS, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION,
-    ROUNDEZVOUS_SERVER_NAME,
+    packets::{ReceiverToSender, SenderToReceiver},
+    BUF_SIZE, QS_ALPN, QS_VERSION,
 };
 use async_compression::tokio::bufread::GzipDecoder;
-use quinn::{default_runtime, Connection, Endpoint, EndpointConfig, ServerConfig};
-use std::{
-    io,
-    net::{SocketAddr, UdpSocket},
-    path::PathBuf,
-    sync::Arc,
-    time,
-};
+use std::{io, net::SocketAddr, path::PathBuf};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
@@ -110,9 +100,9 @@ pub enum ReceiveError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("connect error: {0}")]
-    Connect(#[from] quinn::ConnectError),
+    Connect(String),
     #[error("connection error: {0}")]
-    Connection(#[from] quinn::ConnectionError),
+    Connection(#[from] iroh::endpoint::ConnectionError),
     #[error("write error: {0}")]
     Write(#[from] quinn::WriteError),
     #[error("read error {0}")]
@@ -125,8 +115,6 @@ pub enum ReceiveError {
     WrongRoundezvousVersion(u32, u32),
     #[error("unexpected data packet: {0:?}")]
     UnexpectedDataPacket(SenderToReceiver),
-    #[error("unexpected roundezvous data packet: {0:?}")]
-    UnexpectedRoundezvousDataPacket(RoundezvousFromServer),
     #[error("files rejected")]
     FilesRejected,
     #[error("unknown peer: {0}")]
@@ -142,9 +130,9 @@ pub struct Receiver {
     /// Receiver arguments
     args: ReceiverArgs,
     /// The connection to the sender
-    conn: Connection,
+    conn: iroh::endpoint::Connection,
     /// The local endpoint
-    endpoint: Endpoint,
+    endpoint: iroh::Endpoint,
 }
 
 /// Arguments for the receiver
@@ -155,49 +143,39 @@ pub struct ReceiverArgs {
 
 impl Receiver {
     pub async fn connect(
-        socket: UdpSocket,
-        sender: SocketAddr,
+        this_endpoint: iroh::Endpoint,
+        node_addr: iroh::NodeAddr,
         args: ReceiverArgs,
     ) -> Result<Self, ReceiveError> {
-        let rt = default_runtime().unwrap();
+        let conn = this_endpoint
+            .connect(node_addr, QS_ALPN)
+            .await
+            .map_err(|e| ReceiveError::Connect(e.to_string()))?;
 
-        let endpoint = Endpoint::new(EndpointConfig::default(), Some(server_config()), socket, rt)?;
-        if let Some(conn) = endpoint.accept().await {
-            let conn = conn.await?;
-            tracing::debug!(
-                "Server accepted connection from: {:?}",
-                conn.remote_address()
-            );
+        tracing::info!("receiver connected to sender");
 
-            if conn.remote_address() != sender {
-                return Err(ReceiveError::UnknownPeer(conn.remote_address()));
-            }
-
-            return Ok(Self {
-                args,
-                conn,
-                endpoint,
-            });
-        }
-
-        Err(ReceiveError::Io(io::Error::new(
-            io::ErrorKind::Other,
-            "no connection found",
-        )))
+        Ok(Self {
+            args,
+            conn,
+            endpoint: this_endpoint,
+        })
     }
 
     /// Close the connection
-    pub async fn close(&mut self) -> Result<(), ReceiveError> {
+    pub async fn close(&mut self) {
         self.conn.close(0u32.into(), &[0]);
-        self.endpoint.close(0u32.into(), &[0]);
-        Ok(())
+        self.endpoint.close().await;
     }
 
     /// Wait for the other peer to close the connection
-    pub async fn wait_for_close(&mut self) -> Result<(), ReceiveError> {
+    pub async fn wait_for_close(&mut self) {
         self.conn.closed().await;
-        self.endpoint.wait_idle().await;
-        Ok(())
+    }
+
+    /// Get the type of the connection
+    pub async fn connection_type(&self) -> iroh::endpoint::ConnectionType {
+        let node_id = self.conn.remote_node_id().unwrap();
+        self.endpoint.conn_type(node_id).unwrap().get().unwrap()
     }
 
     /// Receive files
@@ -241,7 +219,7 @@ impl Receiver {
             None => {
                 send_packet(ReceiverToSender::RejectFiles, &self.conn).await?;
                 // Wait for the sender to acknowledge the rejection
-                self.wait_for_close().await?;
+                self.wait_for_close().await;
                 return Err(ReceiveError::FilesRejected);
             }
         };
@@ -332,63 +310,7 @@ impl Receiver {
             }
         }
 
-        self.close().await?;
+        self.close().await;
         Ok(())
     }
-}
-
-pub async fn roundezvous_connect(
-    socket: UdpSocket,
-    external_addr: SocketAddr,
-    server_addr: SocketAddr,
-    code: [u8; CODE_LEN],
-) -> Result<SocketAddr, ReceiveError> {
-    let rt = default_runtime().unwrap();
-
-    let mut endpoint = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
-
-    endpoint.set_default_client_config(unsafe_client_config());
-
-    let conn = endpoint
-        .connect(server_addr, ROUNDEZVOUS_SERVER_NAME)?
-        .await?;
-
-    send_packet(
-        RoundezvousToServer::Connect {
-            version: ROUNDEZVOUS_PROTO_VERSION,
-            socket_addr: external_addr,
-            code,
-        },
-        &conn,
-    )
-    .await?;
-
-    let sender_addr = match receive_packet::<RoundezvousFromServer>(&conn).await? {
-        RoundezvousFromServer::SocketAddr { socket_addr } => socket_addr,
-        RoundezvousFromServer::WrongVersion { expected } => {
-            return Err(ReceiveError::WrongRoundezvousVersion(
-                expected,
-                ROUNDEZVOUS_PROTO_VERSION,
-            ))
-        }
-        p => return Err(ReceiveError::UnexpectedRoundezvousDataPacket(p)),
-    };
-
-    conn.closed().await;
-    endpoint.wait_idle().await;
-    tracing::debug!("exchange complete");
-
-    Ok(sender_addr)
-}
-
-fn server_config() -> ServerConfig {
-    let (cert, key) = self_signed_cert().expect("failed to generate self signed cert");
-
-    let mut transport_config = quinn::TransportConfig::default();
-    transport_config.keep_alive_interval(Some(time::Duration::from_secs(KEEP_ALIVE_INTERVAL_SECS)));
-
-    ServerConfig::with_single_cert(vec![cert], key)
-        .unwrap()
-        .transport_config(Arc::new(transport_config))
-        .to_owned()
 }

@@ -2,7 +2,6 @@ use std::path::Path;
 
 use async_compression::tokio::write::{GzipDecoder, GzipEncoder};
 use bincode::{Decode, Encode};
-use quinn::Connection;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
@@ -291,7 +290,7 @@ impl FilesToSkip {
 
 pub async fn send_packet<P: Encode + std::fmt::Debug>(
     packet: P,
-    conn: &Connection,
+    conn: &iroh::endpoint::Connection,
 ) -> std::io::Result<()> {
     tracing::debug!("Sending packet: {:?}", packet);
     let mut send = conn.open_uni().await?;
@@ -313,13 +312,13 @@ pub enum PacketRecvError {
     #[error("encode error: {0}")]
     EncodeError(#[from] bincode::error::DecodeError),
     #[error("connection error: {0}")]
-    Connection(#[from] quinn::ConnectionError),
+    Connection(#[from] iroh::endpoint::ConnectionError),
     #[error("read error {0}")]
-    Read(#[from] quinn::ReadError),
+    Read(#[from] iroh::endpoint::ReadError),
 }
 
 pub async fn receive_packet<P: Decode + std::fmt::Debug>(
-    conn: &Connection,
+    conn: &iroh::endpoint::Connection,
 ) -> Result<P, PacketRecvError> {
     let mut recv = conn.accept_uni().await?;
     let mut buf = Vec::new();
