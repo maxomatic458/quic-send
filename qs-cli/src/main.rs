@@ -5,7 +5,7 @@ use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use iroh::{Endpoint, RelayMode, SecretKey};
 use qs_core::{
     common::FilesAvailable,
-    receive::{Receiver, ReceiverArgs},
+    receive::{ReceiveError, Receiver, ReceiverArgs},
     send::{SendError, Sender, SenderArgs},
     QuicSendError, QS_ALPN, QS_VERSION,
 };
@@ -13,7 +13,9 @@ use std::{
     cell::RefCell,
     io::{self, Write},
     path::PathBuf,
-    rc::Rc, str::FromStr,
+    rc::Rc,
+    str::FromStr,
+    time::Duration,
 };
 use thiserror::Error;
 use tracing::Level;
@@ -48,7 +50,7 @@ enum Mode {
         output: PathBuf,
 
         /// The code to connect to the sender
-        code: String,
+        code: Option<String>,
 
         /// Automatically accept the files
         #[clap(long, short = 'y')]
@@ -74,7 +76,7 @@ async fn main() -> color_eyre::Result<()> {
 
     tracing::debug!("qs-ver {}", QS_VERSION);
 
-    //  Check if the files even exist
+    // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {
         for file in files {
             if !file.exists() {
@@ -113,13 +115,15 @@ async fn main() -> color_eyre::Result<()> {
             let sender_args = SenderArgs { files };
             let mut sender = Sender::connect(endpoint, sender_args).await?;
 
+            // Give iroh some time to switch the connection to direct
+            std::thread::sleep(Duration::from_secs(4));
             let conn_type = sender.connection_type().await;
             println!("Connection type: {}", connection_type_info_msg(conn_type));
 
             sender
                 .send_files(
                     || {
-                        print!("waiting for the other peer to accept the files...");
+                        print!("Waiting for the other peer to accept the files...");
                         io::stdout().flush().unwrap();
                     },
                     |_accepted| {},
@@ -142,15 +146,26 @@ async fn main() -> color_eyre::Result<()> {
             code,
             auto_accept,
         } => {
+            let code = match code {
+                Some(code) => code,
+                None => dialoguer::Input::new()
+                    .with_prompt("Enter the ticket to connect")
+                    .interact()?,
+            };
+
             let node_addr = hex::decode(code).unwrap();
             let node_addr =
                 bincode::serde::decode_from_slice(&node_addr, bincode::config::standard())
-                    .unwrap()
+                    .map_err(|_| {
+                        AppError::QuicSendCore(QuicSendError::Receive(ReceiveError::InvalidCode))
+                    })?
                     .0;
 
             let receiver_args = ReceiverArgs { resume: !overwrite };
             let mut receiver = Receiver::connect(endpoint, node_addr, receiver_args).await?;
 
+            // Give iroh some time to switch the connection to direct
+            std::thread::sleep(Duration::from_secs(4));
             let conn_type = receiver.connection_type().await;
             println!("Connection type: {}", connection_type_info_msg(conn_type));
 

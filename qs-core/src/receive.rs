@@ -9,7 +9,7 @@ use crate::{
     BUF_SIZE, QS_ALPN, QS_VERSION,
 };
 use async_compression::tokio::bufread::GzipDecoder;
-use std::{io, net::SocketAddr, path::PathBuf};
+use std::{io, path::PathBuf};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
@@ -117,8 +117,6 @@ pub enum ReceiveError {
     UnexpectedDataPacket(SenderToReceiver),
     #[error("files rejected")]
     FilesRejected,
-    #[error("unknown peer: {0}")]
-    UnknownPeer(SocketAddr),
     #[error("invalid code")]
     InvalidCode,
     #[error("receive packet error: {0}")]
