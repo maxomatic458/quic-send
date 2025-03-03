@@ -77,7 +77,8 @@ async fn main() -> color_eyre::Result<()> {
         .with_max_level(Level::from_str(&args.log_level.to_string()).unwrap())
         .init();
 
-    if cfg!(target_os = "windows") {
+    #[cfg(windows)]
+    {
         colored::control::set_virtual_terminal(true).unwrap();
     }
 
