@@ -21,13 +21,14 @@ iroh = { workspace = true }
 rand = { workspace = true }
 qs-core = { workspace = true } # todo remove later
 bincode = { workspace = true, features = ["serde"] }
-hex = { workspace = true }
+copypasta = { workspace = true }
 
 async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 indicatif = "0.17.8"
 dialoguer = "0.11.0"
 colored = "3.0.0"
 color-eyre = "0.6.3"
+base64 = "0.22.1"
 
 [[bin]]
 path = "src/main.rs"

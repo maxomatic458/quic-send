@@ -1,5 +1,7 @@
+use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use copypasta::{ClipboardContext, ClipboardProvider};
 use dialoguer::theme::ColorfulTheme;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use iroh::{Endpoint, RelayMode, SecretKey};
@@ -69,12 +71,17 @@ enum AppError {
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     let args: Args = Args::parse();
+
     color_eyre::install()?;
     tracing_subscriber::fmt()
         .with_max_level(Level::from_str(&args.log_level.to_string()).unwrap())
         .init();
 
-    tracing::debug!("qs-ver {}", QS_VERSION);
+    if cfg!(target_os = "windows") {
+        colored::control::set_virtual_terminal(true).unwrap();
+    }
+
+    tracing::debug!("qs {}", QS_VERSION);
 
     // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {
@@ -106,11 +113,18 @@ async fn main() -> color_eyre::Result<()> {
 
             let serialized =
                 bincode::serde::encode_to_vec(node_addr, bincode::config::standard()).unwrap();
-            let hex_addr = hex::encode(serialized);
+            let ticket: String = BASE64_STANDARD_NO_PAD.encode(&serialized);
 
-            println!("Ticket:\n{}\n", hex_addr.bright_white());
+            println!(
+                "Ticket (copied to your clipboard):\n\n{}\n",
+                ticket.bright_white()
+            );
             println!("on the other peer, run the following command:\n");
-            println!("{}", format!("qs receive {}", hex_addr).yellow());
+            println!("{}", "qs receive <ticket>".yellow());
+
+            if let Ok(mut ctx) = ClipboardContext::new() {
+                let _ = ctx.set_contents(ticket);
+            }
 
             let sender_args = SenderArgs { files };
             let mut sender = Sender::connect(endpoint, sender_args).await?;
@@ -146,15 +160,20 @@ async fn main() -> color_eyre::Result<()> {
             code,
             auto_accept,
         } => {
-            let code = match code {
+            let ticket = match code {
                 Some(code) => code,
                 None => dialoguer::Input::new()
                     .with_prompt("Enter the ticket to connect")
                     .interact()?,
             };
 
-            let node_addr = hex::decode(code).unwrap();
-            let node_addr =
+            let node_addr = BASE64_STANDARD_NO_PAD
+                .decode(ticket.as_bytes())
+                .map_err(|_| {
+                    AppError::QuicSendCore(QuicSendError::Receive(ReceiveError::InvalidCode))
+                })?;
+
+            let node_addr: iroh::NodeAddr =
                 bincode::serde::decode_from_slice(&node_addr, bincode::config::standard())
                     .map_err(|_| {
                         AppError::QuicSendCore(QuicSendError::Receive(ReceiveError::InvalidCode))
@@ -336,11 +355,15 @@ impl CliProgressBars {
     }
 }
 
-fn connection_type_info_msg(connection_type: iroh::endpoint::ConnectionType) -> String {
-    match connection_type {
-        iroh::endpoint::ConnectionType::Direct(_) => "Direct".green().to_string(),
-        iroh::endpoint::ConnectionType::Relay(_) => "Relay".red().to_string(),
-        iroh::endpoint::ConnectionType::Mixed(_, _) => "Mixed".yellow().to_string(),
-        iroh::endpoint::ConnectionType::None => "None".red().to_string(),
-    }
+fn connection_type_info_msg(connection_type: Option<iroh::endpoint::ConnectionType>) -> String {
+    if let Some(conn_type) = connection_type {
+        return match conn_type {
+            iroh::endpoint::ConnectionType::Direct(_) => "Direct".green().to_string(),
+            iroh::endpoint::ConnectionType::Relay(_) => "Relay".red().to_string(),
+            iroh::endpoint::ConnectionType::Mixed(_, _) => "Mixed".yellow().to_string(),
+            iroh::endpoint::ConnectionType::None => "None".red().to_string(),
+        };
+    };
+
+    "???".red().to_string()
 }

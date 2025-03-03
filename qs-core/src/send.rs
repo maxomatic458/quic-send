@@ -158,9 +158,9 @@ impl Sender {
     }
 
     /// Get the type of the connection
-    pub async fn connection_type(&self) -> iroh::endpoint::ConnectionType {
-        let node_id = self.conn.remote_node_id().unwrap();
-        self.endpoint.conn_type(node_id).unwrap().get().unwrap()
+    pub async fn connection_type(&self) -> Option<iroh::endpoint::ConnectionType> {
+        let node_id = self.conn.remote_node_id().ok()?;
+        self.endpoint.conn_type(node_id).ok()?.get().ok()
     }
 
     /// Send files
