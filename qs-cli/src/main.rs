@@ -77,6 +77,7 @@ async fn main() -> color_eyre::Result<()> {
         .with_max_level(Level::from_str(&args.log_level.to_string()).unwrap())
         .init();
 
+    // Make sure colors work correclty in cmd.exe.
     #[cfg(windows)]
     {
         colored::control::set_virtual_terminal(true).unwrap();
@@ -133,6 +134,7 @@ async fn main() -> color_eyre::Result<()> {
             // Give iroh some time to switch the connection to direct
             std::thread::sleep(Duration::from_secs(4));
             let conn_type = sender.connection_type().await;
+            tracing::debug!("connected with type: {:?}", conn_type);
             println!("Connection type: {}", connection_type_info_msg(conn_type));
 
             sender
@@ -187,6 +189,7 @@ async fn main() -> color_eyre::Result<()> {
             // Give iroh some time to switch the connection to direct
             std::thread::sleep(Duration::from_secs(4));
             let conn_type = receiver.connection_type().await;
+            tracing::debug!("connected with type: {:?}", conn_type);
             println!("Connection type: {}", connection_type_info_msg(conn_type));
 
             receiver
@@ -197,6 +200,7 @@ async fn main() -> color_eyre::Result<()> {
                     |files_offered| {
                         if auto_accept {
                             println!("auto accepting files");
+                            tracing::debug!("auto accepting files");
                             Some(output.clone())
                         } else if accept_files(files_offered) {
                             Some(output.clone())
