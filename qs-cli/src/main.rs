@@ -77,7 +77,7 @@ async fn main() -> color_eyre::Result<()> {
         .with_max_level(Level::from_str(&args.log_level.to_string()).unwrap())
         .init();
 
-    // Make sure colors work correclty in cmd.exe.
+    // Make sure colors work correctly in cmd.exe.
     #[cfg(windows)]
     {
         colored::control::set_virtual_terminal(true).unwrap();
