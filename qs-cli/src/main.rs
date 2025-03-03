@@ -1,40 +1,36 @@
+use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use copypasta::{ClipboardContext, ClipboardProvider};
 use dialoguer::theme::ColorfulTheme;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
-use local_ip_address::local_ip;
+use iroh::{Endpoint, RelayMode, SecretKey};
 use qs_core::{
     common::FilesAvailable,
-    receive::{roundezvous_connect, ReceiveError, Receiver, ReceiverArgs},
-    send::{roundezvous_announce, SendError, Sender, SenderArgs},
-    utils, QuicSendError, CODE_LEN, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION, STUN_SERVERS,
+    receive::{ReceiveError, Receiver, ReceiverArgs},
+    send::{SendError, Sender, SenderArgs},
+    QuicSendError, QS_ALPN, QS_VERSION,
 };
 use std::{
     cell::RefCell,
     io::{self, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
     path::PathBuf,
     rc::Rc,
+    str::FromStr,
+    time::Duration,
 };
 use thiserror::Error;
-// const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 178, 47)), 9090);
-const DEFAULT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(209, 25, 141, 16)), 1172);
+use tracing::Level;
 
 #[derive(Parser, Debug)]
 #[clap(version = QS_VERSION, author = env!("CARGO_PKG_AUTHORS"))]
 struct Args {
     /// Log level
-    #[clap(long, short, default_value = "info")]
+    #[clap(long, short, default_value = "error")]
     log_level: tracing::Level,
-    /// Direct mode (no rendezvous server)
-    #[clap(long, short, default_value = "false", conflicts_with = "server_addr")]
-    direct: bool,
     /// Send or receive files
     #[clap(subcommand)]
     mode: Mode,
-    /// override the default roundezvous server address, incompatible with direct mode
-    #[clap(long, short, conflicts_with = "direct", default_value_t = DEFAULT_ADDR)]
-    server_addr: SocketAddr,
 }
 
 #[derive(Subcommand, Debug)]
@@ -75,16 +71,19 @@ enum AppError {
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     let args: Args = Args::parse();
+
     color_eyre::install()?;
     tracing_subscriber::fmt()
-        .with_max_level(args.log_level)
+        .with_max_level(Level::from_str(&args.log_level.to_string()).unwrap())
         .init();
 
-    tracing::debug!(
-        "qs-ver {}, roundezvous-proto-ver {}",
-        QS_VERSION,
-        ROUNDEZVOUS_PROTO_VERSION
-    );
+    // Make sure colors work correctly in cmd.exe.
+    #[cfg(windows)]
+    {
+        colored::control::set_virtual_terminal(true).unwrap();
+    }
+
+    tracing::debug!("qs {}", QS_VERSION);
 
     // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {
@@ -95,100 +94,53 @@ async fn main() -> color_eyre::Result<()> {
         }
     }
 
-    let socket = UdpSocket::bind(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0))?;
+    let secret_key = SecretKey::generate(rand::rngs::OsRng);
 
-    let external_addr = utils::external_addr(
-        &socket,
-        STUN_SERVERS[0]
-            .to_socket_addrs()?
-            .find(|x| x.is_ipv4())
-            .unwrap(),
-        Some(
-            STUN_SERVERS[1]
-                .to_socket_addrs()?
-                .find(|x| x.is_ipv4())
-                .unwrap(),
-        ),
-    )
-    .map_err(QuicSendError::Stun)?;
-
-    let other;
-
-    if args.direct {
-        let local_ip = local_ip().unwrap();
-        println!(
-            "Local address (if the other peer is in the same network): {}",
-            local_ip.to_string().green()
-        );
-        println!("External address: {}", external_addr.to_string().green());
-
-        other =
-            dialoguer::Input::<SocketAddr>::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                .with_prompt("Enter the remote address")
-                .interact()
-                .unwrap();
-    } else {
-        let socket_clone = socket.try_clone().unwrap();
-        match args.mode {
-            Mode::Send { .. } => {
-                other = roundezvous_announce(socket_clone, external_addr, args.server_addr, |c| {
-                    let code = String::from_utf8(c.to_vec()).unwrap();
-                    println!("code: {}", code.bright_white());
-                    println!("on the other peer, run the following command:\n");
-                    println!(
-                        "{}",
-                        format!(
-                            "qs {}receive {}\n",
-                            if args.server_addr != DEFAULT_ADDR {
-                                format!("-s {} ", args.server_addr)
-                            } else {
-                                "".to_string()
-                            },
-                            code
-                        )
-                        .yellow()
-                    );
-                })
-                .await
-                .map_err(QuicSendError::Send)?;
-            }
-            Mode::Receive { ref code, .. } => {
-                let code = code.clone().unwrap_or_else(|| {
-                    dialoguer::Input::<String>::with_theme(
-                        &dialoguer::theme::ColorfulTheme::default(),
-                    )
-                    .with_prompt("Enter the code")
-                    .interact()
-                    .unwrap()
-                });
-
-                let code: [u8; CODE_LEN] = match code.as_bytes().try_into() {
-                    Ok(c) => c,
-                    Err(_) => return Err(QuicSendError::Receive(ReceiveError::InvalidCode).into()),
-                };
-
-                other = roundezvous_connect(socket_clone, external_addr, args.server_addr, code)
-                    .await
-                    .map_err(QuicSendError::Receive)?;
-            }
-        }
-    }
-
-    utils::hole_punch(&socket, other)?;
+    let endpoint = Endpoint::builder()
+        .secret_key(secret_key)
+        .alpns(vec![QS_ALPN.to_vec()])
+        .relay_mode(RelayMode::Default)
+        .bind()
+        .await
+        .map_err(|e| AppError::QuicSendCore(QuicSendError::Bind(e.to_string())))?;
 
     let progress_bars: Rc<RefCell<Option<CliProgressBars>>> = Rc::new(RefCell::new(None));
     let rc_clone = Rc::clone(&progress_bars);
 
     match args.mode {
         Mode::Send { files } => {
-            let mut sender = Sender::connect(socket, other, SenderArgs { files })
-                .await
-                .map_err(QuicSendError::Send)?;
+            let node_addr = endpoint.node_addr().await.map_err(|e| {
+                AppError::QuicSendCore(QuicSendError::Send(SendError::NodeAddr(e.to_string())))
+            })?;
+
+            let serialized =
+                bincode::serde::encode_to_vec(node_addr, bincode::config::standard()).unwrap();
+            let ticket: String = BASE64_STANDARD_NO_PAD.encode(&serialized);
+
+            println!(
+                "Ticket (copied to your clipboard):\n\n{}\n",
+                ticket.bright_white()
+            );
+            println!("on the other peer, run the following command:\n");
+            println!("{}", "qs receive <ticket>".yellow());
+
+            if let Ok(mut ctx) = ClipboardContext::new() {
+                let _ = ctx.set_contents(ticket);
+            }
+
+            let sender_args = SenderArgs { files };
+            let mut sender = Sender::connect(endpoint, sender_args).await?;
+
+            // Give iroh some time to switch the connection to direct
+            std::thread::sleep(Duration::from_secs(4));
+            let conn_type = sender.connection_type().await;
+            tracing::debug!("connected with type: {:?}", conn_type);
+            println!("Connection type: {}", connection_type_info_msg(conn_type));
 
             sender
                 .send_files(
                     || {
-                        print!("waiting for the other peer to accept the files...");
+                        print!("Waiting for the other peer to accept the files...");
                         io::stdout().flush().unwrap();
                     },
                     |_accepted| {},
@@ -208,13 +160,37 @@ async fn main() -> color_eyre::Result<()> {
         Mode::Receive {
             overwrite,
             output,
+            code,
             auto_accept,
-            ..
         } => {
-            let mut receiver =
-                Receiver::connect(socket, other, ReceiverArgs { resume: !overwrite })
-                    .await
-                    .map_err(QuicSendError::Receive)?;
+            let ticket = match code {
+                Some(code) => code,
+                None => dialoguer::Input::new()
+                    .with_prompt("Enter the ticket to connect")
+                    .interact()?,
+            };
+
+            let node_addr = BASE64_STANDARD_NO_PAD
+                .decode(ticket.as_bytes())
+                .map_err(|_| {
+                    AppError::QuicSendCore(QuicSendError::Receive(ReceiveError::InvalidCode))
+                })?;
+
+            let node_addr: iroh::NodeAddr =
+                bincode::serde::decode_from_slice(&node_addr, bincode::config::standard())
+                    .map_err(|_| {
+                        AppError::QuicSendCore(QuicSendError::Receive(ReceiveError::InvalidCode))
+                    })?
+                    .0;
+
+            let receiver_args = ReceiverArgs { resume: !overwrite };
+            let mut receiver = Receiver::connect(endpoint, node_addr, receiver_args).await?;
+
+            // Give iroh some time to switch the connection to direct
+            std::thread::sleep(Duration::from_secs(4));
+            let conn_type = receiver.connection_type().await;
+            tracing::debug!("connected with type: {:?}", conn_type);
+            println!("Connection type: {}", connection_type_info_msg(conn_type));
 
             receiver
                 .receive_files(
@@ -224,6 +200,7 @@ async fn main() -> color_eyre::Result<()> {
                     |files_offered| {
                         if auto_accept {
                             println!("auto accepting files");
+                            tracing::debug!("auto accepting files");
                             Some(output.clone())
                         } else if accept_files(files_offered) {
                             Some(output.clone())
@@ -381,4 +358,17 @@ impl CliProgressBars {
             }
         }
     }
+}
+
+fn connection_type_info_msg(connection_type: Option<iroh::endpoint::ConnectionType>) -> String {
+    if let Some(conn_type) = connection_type {
+        return match conn_type {
+            iroh::endpoint::ConnectionType::Direct(_) => "Direct".green().to_string(),
+            iroh::endpoint::ConnectionType::Relay(_) => "Relay".red().to_string(),
+            iroh::endpoint::ConnectionType::Mixed(_, _) => "Mixed".yellow().to_string(),
+            iroh::endpoint::ConnectionType::None => "None".red().to_string(),
+        };
+    };
+
+    "???".red().to_string()
 }

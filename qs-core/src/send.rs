@@ -1,18 +1,12 @@
 #![allow(clippy::suspicious_open_options)]
 
-use std::{
-    net::{SocketAddr, UdpSocket},
-    path::PathBuf,
-};
-
 use crate::{
     common::{get_files_available, receive_packet, send_packet, FileSendRecvTree, PacketRecvError},
-    packets::{ReceiverToSender, RoundezvousFromServer, RoundezvousToServer, SenderToReceiver},
-    unsafe_client_config, BUF_SIZE, CODE_LEN, QS_VERSION, ROUNDEZVOUS_PROTO_VERSION,
-    ROUNDEZVOUS_SERVER_NAME, SEND_SERVER_NAME,
+    packets::{ReceiverToSender, SenderToReceiver},
+    BUF_SIZE, QS_VERSION,
 };
 use async_compression::tokio::write::GzipEncoder;
-use quinn::{default_runtime, Connection, Endpoint, EndpointConfig};
+use std::path::PathBuf;
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
@@ -93,10 +87,10 @@ pub enum SendError {
     FileDoesNotExists(PathBuf),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("connect error: {0}")]
-    Connect(#[from] quinn::ConnectError),
+    // #[error("connect error: {0}")]
+    // Connect(#[from] iroh::endpoint::ConnectError),
     #[error("connection error: {0}")]
-    Connection(#[from] quinn::ConnectionError),
+    Connection(#[from] iroh::endpoint::ConnectionError),
     #[error("read error: {0}")]
     Read(#[from] quinn::ReadError),
     #[error("wrong version, the receiver expected: {0}, but got: {1}")]
@@ -107,12 +101,12 @@ pub enum SendError {
     WrongRoundezvousVersion(u32, u32),
     #[error("unexpected data packet: {0:?}")]
     UnexpectedDataPacket(ReceiverToSender),
-    #[error("unexpected roundezvous data packet: {0:?}")]
-    UnexpectedRoundezvousDataPacket(RoundezvousFromServer),
     #[error("files rejected")]
     FilesRejected,
     #[error("receive packet error: {0}")]
     ReceivePacket(#[from] PacketRecvError),
+    #[error("failed to fetch node addr: {0}")]
+    NodeAddr(String),
 }
 
 /// A client that can send files
@@ -120,9 +114,9 @@ pub struct Sender {
     /// Sender arguments
     args: SenderArgs,
     /// The connection to the receiver
-    conn: Connection,
+    conn: iroh::endpoint::Connection,
     /// The local endpoint
-    endpoint: Endpoint,
+    endpoint: iroh::Endpoint,
 }
 
 /// Arguments for the sender
@@ -133,35 +127,40 @@ pub struct SenderArgs {
 
 impl Sender {
     pub async fn connect(
-        socket: UdpSocket,
-        receiver: SocketAddr,
+        this_endpoint: iroh::Endpoint,
         args: SenderArgs,
     ) -> Result<Self, SendError> {
-        let rt = default_runtime().unwrap();
+        if let Some(incoming) = this_endpoint.accept().await {
+            let connecting = incoming.accept()?;
+            let conn = connecting.await?;
 
-        let mut endpoint = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
+            tracing::info!("receiver connected to sender");
 
-        endpoint.set_default_client_config(unsafe_client_config());
-        let conn = endpoint.connect(receiver, SEND_SERVER_NAME)?.await?;
-        tracing::debug!("Client connected to server: {:?}", conn.remote_address());
+            return Ok(Self {
+                args,
+                conn,
+                endpoint: this_endpoint,
+            });
+        }
 
-        Ok(Self {
-            args,
-            conn,
-            endpoint,
-        })
+        unreachable!();
     }
 
     /// Close the connection
     pub async fn close(&mut self) {
         self.conn.close(0u32.into(), &[0]);
-        self.endpoint.close(0u32.into(), &[0]);
+        self.endpoint.close().await;
     }
 
     /// Wait for the other peer to close the connection
     pub async fn wait_for_close(&mut self) {
         self.conn.closed().await;
-        self.endpoint.wait_idle().await;
+    }
+
+    /// Get the type of the connection
+    pub async fn connection_type(&self) -> Option<iroh::endpoint::ConnectionType> {
+        let node_id = self.conn.remote_node_id().ok()?;
+        self.endpoint.conn_type(node_id).ok()?.get().ok()
     }
 
     /// Send files
@@ -271,54 +270,4 @@ impl Sender {
         self.wait_for_close().await;
         Ok(())
     }
-}
-
-pub async fn roundezvous_announce(
-    socket: UdpSocket,
-    external_addr: SocketAddr,
-    server_addr: SocketAddr,
-    mut code_callback: impl FnMut([u8; CODE_LEN]),
-) -> Result<SocketAddr, SendError> {
-    let rt = default_runtime().unwrap();
-
-    let mut endpoint = Endpoint::new(EndpointConfig::default(), None, socket, rt)?;
-
-    endpoint.set_default_client_config(unsafe_client_config());
-
-    let conn = endpoint
-        .connect(server_addr, ROUNDEZVOUS_SERVER_NAME)?
-        .await?;
-
-    send_packet(
-        RoundezvousToServer::Announce {
-            version: ROUNDEZVOUS_PROTO_VERSION,
-            socket_addr: external_addr,
-        },
-        &conn,
-    )
-    .await?;
-
-    let code = match receive_packet::<RoundezvousFromServer>(&conn).await? {
-        RoundezvousFromServer::Code { code } => code,
-        RoundezvousFromServer::WrongVersion { expected } => {
-            return Err(SendError::WrongRoundezvousVersion(
-                expected,
-                ROUNDEZVOUS_PROTO_VERSION,
-            ))
-        }
-        p => return Err(SendError::UnexpectedRoundezvousDataPacket(p)),
-    };
-
-    code_callback(code);
-
-    let receiver_addr = match receive_packet::<RoundezvousFromServer>(&conn).await? {
-        RoundezvousFromServer::SocketAddr { socket_addr } => socket_addr,
-        p => return Err(SendError::UnexpectedRoundezvousDataPacket(p)),
-    };
-
-    conn.closed().await;
-    endpoint.wait_idle().await;
-    tracing::debug!("exchange complete");
-
-    Ok(receiver_addr)
 }
