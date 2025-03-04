@@ -8,6 +8,12 @@ import { Window } from "@tauri-apps/api/window"
 
 import { sendNotification } from "@tauri-apps/plugin-notification"
 import { setStore, store } from "../App"
+import {
+    ACCEPT_FILES_EVENT,
+    CONNECTED_TO_SERVER_EVENT,
+    CONNECTED_WITH_CONN_TYPE,
+    FILES_OFFERED_EVENT,
+} from "../events"
 
 export enum ReceiveState {
     ConnectingToServer = "R_connecting-to-server",
@@ -31,22 +37,24 @@ function Receive(props: ReceiveProps) {
     const [files, setFiles] = createSignal<[string, number, boolean][]>([])
 
     invoke("download_files", {
-        code: props.code,
-        serverAddr: store.roundezvousAddr,
+        ticket: props.code,
     }).catch((e: string) => {
         props.onError(e)
     })
 
-    const unlisten1 = listen("server-connected", (_) => {
+    const unlisten1 = listen(CONNECTED_TO_SERVER_EVENT, (_) => {
         setStore("currentState", ReceiveState.ConnectingToSender)
     })
 
-    const unlisten2 = listen("receiver-connected", (_) => {
-        setStore("currentState", ReceiveState.WaitingForFiles)
-    })
+    const unlisten2 = listen(
+        CONNECTED_WITH_CONN_TYPE,
+        (_conn_type: Event<string>) => {
+            setStore("currentState", ReceiveState.WaitingForFiles)
+        },
+    )
 
     const unlisten3 = listen(
-        "files-offered",
+        FILES_OFFERED_EVENT,
         (event: Event<FilesOfferedEvent>) => {
             let files = event.payload.files
             setStore("currentState", ReceiveState.FilesOffered)
@@ -78,9 +86,9 @@ function Receive(props: ReceiveProps) {
                                 ReceiveState.DownloadingFiles,
                             )
                             console.log("Accepting files at", path)
-                            Window.getCurrent().emit("accept-files", path)
+                            Window.getCurrent().emit(ACCEPT_FILES_EVENT, path)
                         } else {
-                            Window.getCurrent().emit("accept-files", "")
+                            Window.getCurrent().emit(ACCEPT_FILES_EVENT, "")
                             setStore("currentState", null)
                         }
                     }}

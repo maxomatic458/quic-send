@@ -18,8 +18,11 @@
     --loading-bar-color: #a8edcc;
     --window-control-height: 1.9rem;
 
+    --ticket-color: #fe8300;
     --color-primary: #00b7c3;
     --color-loading-spinner: orange;
+    /* --ticket-background: #cfcfcf; */
+    /* --ticket-border: #898989; */
 }
 
 * {
@@ -72,11 +75,11 @@
 }
 
 .inputs > input {
-    width: 1.2rem;
+    width: 75%;
     height: 1.5rem;
     margin-left: 2px;
     margin-right: 2px;
-    color: var(--color-primary);
+    color: var(--ticket-color);
     font-weight: bold;
     font-size: large;
     text-align: center;
@@ -106,7 +109,9 @@
 
 .share-code-info {
     /* background: red; */
-    width: fit-content;
+    /* width: fit-content; */
+    width: 100%;
+    max-width: 75vw;
     position: absolute;
     top: 50%;
     left: 50%;
@@ -115,11 +120,16 @@
 }
 
 .share-code {
+    /* background: green; */
     font-family: monospace;
-    font-size: 1.8rem;
+    font-size: 0.8rem;
     color: var(--color-primary);
+    padding: 0.5rem;
     font-weight: bold;
     user-select: all;
+    line-height: 0.8rem;
+    /* overflow: hidden; */
+    word-wrap: break-word;
 }
 
 .text-center {

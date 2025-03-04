@@ -11,7 +11,7 @@ function WaitForReceiver(props: WaitForReceiverProps) {
                 Waiting for receiver to connect
             </h3>
             <div class="share-code-info">
-                <h4 style={{ "margin-bottom": "1rem" }}>
+                <h4 style={{ "margin-bottom": "1rem" }} class="text-center">
                     Share the code below with the receiver
                 </h4>
 

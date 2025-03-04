@@ -20,8 +20,8 @@ bincode = { workspace = true }
 clap = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 iroh = { workspace = true }
+async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

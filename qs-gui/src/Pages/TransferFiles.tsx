@@ -4,6 +4,12 @@ import FileTransferCard from "../Components/FileTransferCard"
 import { humanFileSize } from "../utils"
 import { ProgressBarStatus, Window } from "@tauri-apps/api/window"
 import { invoke } from "@tauri-apps/api/core"
+import { setStore } from "../App"
+import {
+    CANCEL_TRANSFER_EVENT,
+    INITIAL_PROGRESS_EVENT,
+    TRANSFER_FINISHED_EVENT,
+} from "../events"
 
 const PROGRESS_CALL_INTERVAL_MS = 80
 
@@ -34,7 +40,7 @@ function TransferFiles(props: TransferFilesProps) {
     )
 
     const unlisten1 = listen(
-        "initial-progress",
+        INITIAL_PROGRESS_EVENT,
         (event: Event<TransferProgressEvent>) => {
             console.log("initial progress")
             let data = event.payload.data
@@ -47,7 +53,7 @@ function TransferFiles(props: TransferFilesProps) {
         },
     )
 
-    const unlisten2 = listen("transfer-done", (_) => {
+    const unlisten2 = listen(TRANSFER_FINISHED_EVENT, (_) => {
         setDownloaded(totalSize() - initialProgress())
     })
 
@@ -147,7 +153,8 @@ function TransferFiles(props: TransferFilesProps) {
                         Window.getCurrent().setProgressBar({
                             status: ProgressBarStatus.None,
                         })
-                        invoke("exit", { code: 0 })
+                        Window.getCurrent().emit(CANCEL_TRANSFER_EVENT, null)
+                        setStore("currentState", null)
                     }}
                 >
                     Cancel

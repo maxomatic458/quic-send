@@ -11,13 +11,18 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
 /// Generic send function
+///
+/// # Returns
+/// * `Ok(true)` if the transfer should continue
+/// * `Ok(false)` if the transfer should stop
 pub async fn send_file<S, R>(
     send: &mut S,
     file: &mut R,
     skip: u64,
     size: u64,
     write_callback: &mut impl FnMut(u64),
-) -> std::io::Result<()>
+    should_continue: &mut impl FnMut() -> bool,
+) -> std::io::Result<bool>
 where
     S: tokio::io::AsyncWriteExt + Unpin,
     R: tokio::io::AsyncReadExt + tokio::io::AsyncSeekExt + Unpin,
@@ -28,6 +33,10 @@ where
     let mut read = skip;
 
     while read < size {
+        if !should_continue() {
+            return Ok(false);
+        }
+
         let to_read = std::cmp::min(BUF_SIZE as u64, size - read);
         let n = file.read_exact(&mut buf[..to_read as usize]).await?;
 
@@ -44,15 +53,19 @@ where
         write_callback(n as u64);
     }
 
-    Ok(())
+    Ok(true)
 }
 
+/// # Returns
+/// * `Ok(true)` if the transfer should continue
+/// * `Ok(false)` if the transfer should stop
 pub fn send_directory<S>(
     send: &mut S,
     root_path: &std::path::Path,
     files: &[FileSendRecvTree],
     write_callback: &mut impl FnMut(u64),
-) -> std::io::Result<()>
+    should_continue: &mut impl FnMut() -> bool,
+) -> std::io::Result<bool>
 where
     S: tokio::io::AsyncWriteExt + Unpin + Send,
 {
@@ -60,25 +73,44 @@ where
         match file {
             FileSendRecvTree::File { name, skip, size } => {
                 let path = root_path.join(name);
-                tokio::task::block_in_place(|| {
+
+                let continues = tokio::task::block_in_place(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
                         let mut file = tokio::fs::OpenOptions::new().read(true).open(&path).await?;
 
-                        send_file(send, &mut file, *skip, *size, write_callback).await?;
+                        if !send_file(
+                            send,
+                            &mut file,
+                            *skip,
+                            *size,
+                            write_callback,
+                            should_continue,
+                        )
+                        .await?
+                        {
+                            return Ok::<bool, std::io::Error>(false);
+                        }
+
                         file.shutdown().await?;
-                        Ok::<(), std::io::Error>(())
+                        Ok::<bool, std::io::Error>(true)
                     })
                 })?;
+
+                if !continues {
+                    return Ok(false);
+                }
             }
             FileSendRecvTree::Dir { name, files } => {
                 let root_path = root_path.join(name);
-                send_directory(send, &root_path, files, write_callback)?;
+                if !send_directory(send, &root_path, files, write_callback, should_continue)? {
+                    return Ok(false);
+                };
             }
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 #[derive(Debug, Error)]
@@ -169,13 +201,19 @@ impl Sender {
     /// * `files_decision_callback` - Callback with the decision of the other peer to accept the files
     /// * `initial_progress_callback` - Callback with the initial progress of each file to send (name, current, total)
     /// * `write_callback` - Callback every time data is written to the connection
+    /// * `should_continue` - Callback to check if the transfer should continue
+    ///
+    /// # Returns
+    /// * `Ok(true)` if the transfer was finished successfully
+    /// * `Ok(false)` if the transfer was stopped
     pub async fn send_files(
         &mut self,
         mut wait_for_other_peer_to_accept_files_callback: impl FnMut(),
         mut files_decision_callback: impl FnMut(bool),
         mut initial_progress_callback: impl FnMut(&[(String, u64, u64)]),
         write_callback: &mut impl FnMut(u64),
-    ) -> Result<(), SendError> {
+        should_continue: &mut impl FnMut() -> bool,
+    ) -> Result<bool, SendError> {
         send_packet(
             SenderToReceiver::ConnRequest {
                 version_num: QS_VERSION.to_string(),
@@ -252,22 +290,51 @@ impl Sender {
         let send = self.conn.open_uni().await?;
         let mut send = GzipEncoder::new(send);
 
+        let mut interrupted = false;
+
         for (path, file) in self.args.files.iter().zip(to_send) {
             if let Some(file) = file {
                 match file {
                     FileSendRecvTree::File { skip, size, .. } => {
                         let mut file = tokio::fs::File::open(&path).await?;
-                        send_file(&mut send, &mut file, skip, size, write_callback).await?;
+                        if !send_file(
+                            &mut send,
+                            &mut file,
+                            skip,
+                            size,
+                            write_callback,
+                            should_continue,
+                        )
+                        .await?
+                        {
+                            interrupted = true;
+                            break;
+                        }
                     }
                     FileSendRecvTree::Dir { files, .. } => {
-                        send_directory(&mut send, path, &files, write_callback)?;
+                        if !send_directory(
+                            &mut send,
+                            path,
+                            &files,
+                            write_callback,
+                            should_continue,
+                        )? {
+                            interrupted = true;
+                            break;
+                        }
                     }
                 }
             }
         }
 
         send.shutdown().await?;
-        self.wait_for_close().await;
-        Ok(())
+
+        if !interrupted {
+            self.wait_for_close().await;
+        } else {
+            tracing::info!("the transfer was interrupted");
+        }
+
+        Ok(!interrupted)
     }
 }

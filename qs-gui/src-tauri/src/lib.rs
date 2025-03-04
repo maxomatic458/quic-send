@@ -1,24 +1,37 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
     path::PathBuf,
     str::FromStr,
-    sync::{atomic::AtomicU64, Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, AtomicU64},
+        mpsc, Arc,
+    },
+    time::Duration,
 };
 
+use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
+use iroh::{Endpoint, RelayMode, SecretKey};
 use qs_core::{
     common::FilesAvailable,
-    receive::{roundezvous_connect, Receiver, ReceiverArgs},
-    send::{roundezvous_announce, SendError, Sender, SenderArgs},
-    utils, CODE_LEN, STUN_SERVERS,
+    receive::{Receiver, ReceiverArgs},
+    send::{Sender, SenderArgs},
+    QS_ALPN,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Listener};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn code_len() -> usize {
-    CODE_LEN
-}
+
+const INITIAL_PROGRESS_EVENT: &str = "initial-progress";
+const FILES_OFFERED_EVENT: &str = "files-offered";
+const CONNECTED_WITH_CONN_TYPE: &str = "receiver-connected";
+const CANCEL_TRANSFER_EVENT: &str = "cancel-transfer";
+const FILES_DECISION_EVENT: &str = "files-decision";
+const TRANSFER_CANCELLED_EVENT: &str = "transfer-cancelled";
+const TRANSFER_FINISHED_EVENT: &str = "transfer-finished";
+const TICKET_EVENT: &str = "server-connection-code";
+const ACCEPT_FILES_EVENT: &str = "accept-files";
+const CONNECTED_TO_SERVER_EVENT: &str = "connected-to-server";
+
 #[derive(Clone, Serialize)]
 struct InitialDownloadProgress {
     /// Filename, current, total
@@ -49,53 +62,57 @@ async fn bytes_transferred() -> u64 {
     BYTES_TRANSFERRED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// # Returns
+/// * `Ok(true)` if the download was successful
+/// * `Ok(false)` if the download was cancelled (by the user)
 #[tauri::command(async)]
-async fn download_files(
-    window: tauri::Window,
-    code: String,
-    server_addr: String,
-) -> Result<(), String> {
-    let server_addr = server_addr
-        .to_socket_addrs()
-        .map_err(|e| format!("failed to resolve server address: {}", e))?
-        .find(|x| x.is_ipv4())
-        .unwrap();
+async fn download_files(window: tauri::Window, ticket: String) -> Result<bool, String> {
+    BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
 
-    let socket = UdpSocket::bind(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0))
-        .map_err(|e| format!("failed to bind socket: {}", e))?;
+    let secret_key = SecretKey::generate(rand::rngs::OsRng);
 
-    let external_addr = get_external_addr(&socket)?;
+    let endpoint = Endpoint::builder()
+        .secret_key(secret_key)
+        .alpns(vec![QS_ALPN.to_vec()])
+        .relay_mode(RelayMode::Default)
+        .bind()
+        .await
+        .map_err(|_| "failed to iroh bind endpoint".to_string())?;
 
-    let code: [u8; CODE_LEN] = match code.as_bytes().try_into() {
-        Ok(c) => c,
-        Err(_) => return Err("invalid code".to_string()),
-    };
+    let node_addr = BASE64_STANDARD_NO_PAD
+        .decode(ticket.as_bytes())
+        .map_err(|_| "failed to decode ticket".to_string())?;
 
-    let other = roundezvous_connect(
-        socket.try_clone().unwrap(),
-        external_addr,
-        server_addr,
-        code,
-    )
-    .await
-    .map_err(|e| format!("failed to connect to server: {}", e))?;
+    let node_addr: iroh::NodeAddr =
+        bincode::serde::decode_from_slice(&node_addr, bincode::config::standard())
+            .map_err(|_| "invalid ticket".to_string())?
+            .0;
 
-    window.emit("server-connected", ()).unwrap();
-
-    utils::hole_punch(&socket, other).map_err(|e| format!("failed to hole punch: {}", e))?;
-
-    let mut receiver = Receiver::connect(socket, other, ReceiverArgs { resume: true })
+    let receiver_args = ReceiverArgs { resume: true };
+    let mut receiver = Receiver::connect(endpoint, node_addr, receiver_args)
         .await
         .map_err(|e| format!("failed to connect to sender: {}", e))?;
 
-    window.emit("receiver-connected", ()).unwrap();
+    window.emit(CONNECTED_TO_SERVER_EVENT, ()).unwrap();
+
+    std::thread::sleep(Duration::from_secs(4));
+    let conn_type = receiver.connection_type().await;
+    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type).unwrap();
+
+    let interrupted = Arc::new(AtomicBool::new(false));
+    let interrupted_clone = interrupted.clone();
+
+    window.listen(CANCEL_TRANSFER_EVENT, move |_| {
+        interrupted_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
 
     receiver
         .receive_files(
             |files| {
+                std::thread::sleep(Duration::from_millis(100));
                 window
                     .emit(
-                        "initial-progress",
+                        INITIAL_PROGRESS_EVENT,
                         InitialDownloadProgress {
                             data: files.iter().map(|f| (f.0.clone(), f.1, f.2)).collect(),
                         },
@@ -114,86 +131,116 @@ async fn download_files(
                     })
                     .collect();
                 window
-                    .emit("files-offered", FilesOffered { files: offered })
+                    .emit(FILES_OFFERED_EVENT, FilesOffered { files: offered })
                     .unwrap();
 
-                let output_path = Arc::new(RwLock::new(None));
-                let accepted_clone = output_path.clone();
-                window.listen("accept-files", move |event| {
-                    println!("event: {:?}", event);
-                    if event.payload() != "\"\"" {
+                let (tx, rx) = mpsc::channel();
+
+                window.listen(ACCEPT_FILES_EVENT, move |event| {
+                    let path_result = if event.payload() != "\"\"" {
                         let path_string = event.payload();
-                        // for some reason the path here starts and ends with a slash
+                        // Remove the quotes that wrap the path
                         let path_string = &path_string[1..path_string.len() - 1];
 
-                        let path: PathBuf = PathBuf::from_str(path_string).unwrap();
-                        *accepted_clone.write().unwrap() = Some(Some(path));
+                        let path = PathBuf::from_str(path_string)
+                            .expect("Failed to parse path from event payload");
+                        Some(path)
                     } else {
-                        *accepted_clone.write().unwrap() = Some(None);
+                        None
                     };
+
+                    let _ = tx.send(path_result);
                 });
 
-                while output_path.read().unwrap().is_none() {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-
-                let output_path = output_path.write().unwrap().take().unwrap();
-                output_path
+                rx.recv()
+                    .expect("Failed to receive file acceptance decision")
             },
             &mut |bytes_read| {
                 BYTES_TRANSFERRED.fetch_add(bytes_read, std::sync::atomic::Ordering::Relaxed);
             },
+            &mut || !interrupted.load(std::sync::atomic::Ordering::Relaxed),
         )
         .await
         .map_err(|e| format!("failed to receive files: {}", e))?;
 
+    let was_interrupted = interrupted.load(std::sync::atomic::Ordering::Relaxed);
+
+    if was_interrupted {
+        window.emit(TRANSFER_CANCELLED_EVENT, ()).unwrap();
+    } else {
+        window.emit(TRANSFER_FINISHED_EVENT, ()).unwrap();
+    }
+
     BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
-    window.emit("transfer-done", ()).unwrap();
-    Ok(())
+    Ok(!was_interrupted)
+}
+
+#[derive(Serialize, Debug)]
+enum UploadResult {
+    /// The files were successfully uploaded
+    Success,
+    /// The file transfer was cancelled by the sender
+    Cancelled,
+    /// The files were rejected by the receiver
+    Rejected,
 }
 
 #[tauri::command(async)]
-async fn upload_files(
-    window: tauri::Window,
-    server_addr: String,
-    files: Vec<PathBuf>,
-) -> Result<(), String> {
-    let server_addr = server_addr
-        .to_socket_addrs()
-        .map_err(|e| format!("failed to resolve server address: {}", e))?
-        .find(|x| x.is_ipv4())
-        .unwrap();
+async fn upload_files(window: tauri::Window, files: Vec<PathBuf>) -> Result<UploadResult, String> {
+    BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
 
-    let socket = UdpSocket::bind(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0))
-        .map_err(|e| format!("failed to bind socket: {}", e))?;
+    let secret_key = SecretKey::generate(rand::rngs::OsRng);
 
-    let external_addr = get_external_addr(&socket)?;
+    let endpoint = Endpoint::builder()
+        .secret_key(secret_key)
+        .alpns(vec![QS_ALPN.to_vec()])
+        .relay_mode(RelayMode::Default)
+        .bind()
+        .await
+        .map_err(|_| "failed to iroh bind endpoint".to_string())?;
 
-    let socket_clone = socket.try_clone().unwrap();
-    let other = roundezvous_announce(socket_clone, external_addr, server_addr, |c| {
-        let code_string = String::from_utf8(c.to_vec()).unwrap();
-        window.emit("server-connection-code", code_string).unwrap();
-    })
-    .await
-    .map_err(|e| format!("failed to announce to server: {}", e))?;
+    let node_addr = endpoint
+        .node_addr()
+        .await
+        .map_err(|e| format!("failed to get node address: {}", e))?;
 
-    let mut sender = Sender::connect(socket, other, SenderArgs { files })
+    let serialized = bincode::serde::encode_to_vec(node_addr, bincode::config::standard()).unwrap();
+    let ticket: String = BASE64_STANDARD_NO_PAD.encode(&serialized);
+
+    window.emit(TICKET_EVENT, ticket).unwrap();
+
+    let mut sender = Sender::connect(endpoint, SenderArgs { files })
         .await
         .map_err(|e| format!("failed to connect to receiver: {}", e))?;
 
-    window.emit("receiver-connected", ()).unwrap();
+    window.emit(CONNECTED_TO_SERVER_EVENT, ()).unwrap();
 
-    let err = sender
+    std::thread::sleep(Duration::from_secs(4));
+    let conn_type = sender.connection_type().await;
+    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type).unwrap();
+
+    let interrupted = Arc::new(AtomicBool::new(false));
+    let interrupted_clone = interrupted.clone();
+
+    let mut rejected = false;
+
+    window.listen(CANCEL_TRANSFER_EVENT, move |_| {
+        interrupted_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+
+    sender
         .send_files(
             || {},
             |accepted| {
-                window.emit("files-decision", accepted).unwrap();
+                println!("FILES DECISION: {:?}", accepted);
+                window.emit(FILES_DECISION_EVENT, accepted).unwrap();
+                rejected = !accepted;
             },
             |initial_bytes_sent| {
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                std::thread::sleep(Duration::from_millis(100));
                 window
                     .emit(
-                        "initial-progress",
+                        INITIAL_PROGRESS_EVENT,
                         InitialDownloadProgress {
                             data: initial_bytes_sent
                                 .iter()
@@ -206,20 +253,25 @@ async fn upload_files(
             &mut |bytes_sent| {
                 BYTES_TRANSFERRED.fetch_add(bytes_sent, std::sync::atomic::Ordering::Relaxed);
             },
+            &mut || !interrupted.load(std::sync::atomic::Ordering::Relaxed),
         )
-        .await;
+        .await
+        .map_err(|e| format!("failed to send files: {}", e))?;
 
-    if let Err(SendError::FilesRejected) = err {
-        // Treat this as a success to avoid double error message.
-        // (handled by the frontend already)
-        return Ok(());
+    let was_interrupted = interrupted.load(std::sync::atomic::Ordering::Relaxed);
+
+    if rejected {
+        return Ok(UploadResult::Rejected);
     }
 
-    err.map_err(|e| format!("failed to send files: {}", e))?;
+    if was_interrupted {
+        window.emit(TRANSFER_CANCELLED_EVENT, ()).unwrap();
+        return Ok(UploadResult::Cancelled);
+    }
 
+    window.emit(TRANSFER_FINISHED_EVENT, ()).unwrap();
     BYTES_TRANSFERRED.store(0, std::sync::atomic::Ordering::Relaxed);
-    window.emit("transfer-done", ()).unwrap();
-    Ok(())
+    Ok(UploadResult::Success)
 }
 
 #[derive(Clone, Serialize)]
@@ -255,29 +307,10 @@ async fn file_info(path: PathBuf) -> Result<FileInfo, String> {
     })
 }
 
-fn get_external_addr(socket: &UdpSocket) -> Result<SocketAddr, String> {
-    utils::external_addr(
-        socket,
-        STUN_SERVERS[0]
-            .to_socket_addrs()
-            .map_err(|e| format!("failed to resolve stun server: {}", e))?
-            .find(|x| x.is_ipv4())
-            .unwrap(),
-        Some(
-            STUN_SERVERS[1]
-                .to_socket_addrs()
-                .map_err(|e| format!("failed to resolve stun server: {}", e))?
-                .find(|x| x.is_ipv4())
-                .unwrap(),
-        ),
-    )
-    .map_err(|e| format!("failed to get external address: {}", e))
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::WARN)
         .init();
 
     std::env::set_var("RUST_LOG", "debug");
@@ -287,7 +320,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             exit,
-            code_len,
             bytes_transferred,
             download_files,
             file_info,
