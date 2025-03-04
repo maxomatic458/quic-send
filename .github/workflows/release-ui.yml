@@ -3,9 +3,9 @@ name: 'Release UI'
 on:
   push:
     branches:
-      - release
+      - master
 
-# This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
+# This workflow will trigger on each push to the `master` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
 
 jobs:
   publish-tauri:
