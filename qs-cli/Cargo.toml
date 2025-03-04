@@ -19,11 +19,11 @@ clap = { workspace = true }
 semver = { workspace = true }
 iroh = { workspace = true }
 rand = { workspace = true }
-qs-core = { workspace = true } # todo remove later
 bincode = { workspace = true, features = ["serde"] }
 copypasta = { workspace = true }
 base64 = { workspace = true }
 
+qs-core = "0.4.0"
 async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 indicatif = "0.17.8"
 dialoguer = "0.11.0"
