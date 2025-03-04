@@ -6,14 +6,13 @@ import Receive, { ReceiveState } from "./Pages/Receive"
 import toast, { Toaster } from "solid-toast"
 import Send, { SendState } from "./Pages/Send"
 import WindowControls from "./Components/WindowControls"
+import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window"
 
 export interface AppState {
-    roundezvousAddr: string
     currentState: CurrentState
 }
 
 export const [store, setStore] = createStore<AppState>({
-    roundezvousAddr: "209.25.141.16:1172",
     currentState: null,
 })
 
@@ -40,6 +39,10 @@ function App() {
         toast.error(e)
         console.error(e)
         setStore("currentState", null)
+        getCurrentWindow().setProgressBar({
+            status: ProgressBarStatus.None,
+            progress: 0,
+        })
     }
 
     function disableRefresh() {

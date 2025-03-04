@@ -56,7 +56,6 @@ function FileTransferCard(props: FileCardProps) {
             </div>
         </div>
     )
-    // </div>
 }
 
 export default FileTransferCard

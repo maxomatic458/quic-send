@@ -1,6 +1,5 @@
-import { invoke } from "@tauri-apps/api/core"
 import { TbFileUpload } from "solid-icons/tb"
-import { createEffect, createSignal } from "solid-js"
+import { createEffect } from "solid-js"
 import ReceiveCodeInput from "../Components/ReceiveCodeInput"
 import { DragDropEvent } from "@tauri-apps/api/webview"
 import { Event, listen } from "@tauri-apps/api/event"
@@ -15,16 +14,11 @@ interface MainProps {
 
 function Main(props: MainProps) {
     /// Receiver
-    const [code, setCode] = createSignal<string>("")
-    const [codeLength, setCodeLength] = createSignal<number | null>(null)
-
-    invoke("code_len", {}).then((res) => {
-        setCodeLength(res as number)
-    })
 
     const unlisten = listen(
         "tauri://drag-drop",
         (event: Event<DragDropEvent>) => {
+            console.log("files dropped")
             const payload = event.payload
             const paths = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
             props.onFilesDropped(paths)
@@ -34,10 +28,6 @@ function Main(props: MainProps) {
     createEffect(async () => {
         if (store.currentState !== null) {
             ;(await unlisten)()
-        }
-
-        if (code().length === codeLength()!) {
-            props.onEnterCode(code())
         }
     })
 
@@ -57,13 +47,10 @@ function Main(props: MainProps) {
             <div class="text-center enter-code-text">
                 <span>Enter code to receive</span>
                 <div class="code-input">
-                    <ReceiveCodeInput
-                        length={codeLength()!}
-                        onChange={setCode}
-                    />
+                    <ReceiveCodeInput onSubmit={props.onEnterCode} />
                 </div>
             </div>
-            <footer class="version-footer">quic-send v0.3.0</footer>
+            <footer class="version-footer">quic-send v0.4.0</footer>
         </div>
     )
 }

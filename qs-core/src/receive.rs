@@ -14,13 +14,18 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
 /// Generic receive function
+///
+/// # Returns
+/// * `Ok(true)` if the transfer should continue
+/// * `Ok(false)` if the transfer should stop
 pub async fn receive_file<R, W>(
     recv: &mut R,
     file: &mut W,
     skip: u64,
     size: u64,
     read_callback: &mut impl FnMut(u64),
-) -> std::io::Result<()>
+    should_continue: &mut impl FnMut() -> bool,
+) -> std::io::Result<bool>
 where
     R: tokio::io::AsyncReadExt + Unpin,
     W: tokio::io::AsyncWriteExt + tokio::io::AsyncSeekExt + Unpin,
@@ -31,6 +36,10 @@ where
     let mut written = skip;
 
     while written < size {
+        if !should_continue() {
+            return Ok(false);
+        }
+
         let to_write = std::cmp::min(BUF_SIZE as u64, size - written);
         let n = recv.read_exact(&mut buf[..to_write as usize]).await?;
 
@@ -47,17 +56,19 @@ where
         read_callback(n as u64);
     }
 
-    Ok(())
+    Ok(true)
 }
 
-/// Receive a directory
-// #[async_recursion]
+/// # Returns
+/// * `Ok(true)` if the transfer should continue
+/// * `Ok(false)` if the transfer should stop
 pub fn receive_directory<S>(
     send: &mut S,
     root_path: &std::path::Path,
     files: &[FileSendRecvTree],
     read_callback: &mut impl FnMut(u64),
-) -> std::io::Result<()>
+    should_continue: &mut impl FnMut() -> bool,
+) -> std::io::Result<bool>
 where
     S: tokio::io::AsyncReadExt + Unpin + Send,
 {
@@ -65,7 +76,8 @@ where
         match file {
             FileSendRecvTree::File { name, skip, size } => {
                 let path = root_path.join(name);
-                tokio::task::block_in_place(|| {
+
+                let continues = tokio::task::block_in_place(|| {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
                         let mut file = tokio::fs::OpenOptions::new()
@@ -73,13 +85,25 @@ where
                             .create(true)
                             .open(&path)
                             .await?;
-                        receive_file(send, &mut file, *skip, *size, read_callback).await?;
+                        let continues = receive_file(
+                            send,
+                            &mut file,
+                            *skip,
+                            *size,
+                            read_callback,
+                            should_continue,
+                        )
+                        .await?;
 
                         file.sync_all().await?;
                         file.shutdown().await?;
-                        Ok::<(), std::io::Error>(())
+                        Ok::<bool, std::io::Error>(continues)
                     })
                 })?;
+
+                if !continues {
+                    return Ok(false);
+                }
             }
             FileSendRecvTree::Dir { name, files } => {
                 let root_path = root_path.join(name);
@@ -87,12 +111,15 @@ where
                 if !root_path.exists() {
                     std::fs::create_dir(&root_path)?;
                 }
-                receive_directory(send, &root_path, files, read_callback)?;
+
+                if !receive_directory(send, &root_path, files, read_callback, should_continue)? {
+                    return Ok(false);
+                }
             }
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 #[derive(Debug, Error)]
@@ -181,12 +208,18 @@ impl Receiver {
     /// * `initial_progress_callback` - Callback with the initial progress of each file to send (name, current, total)
     /// * `accept_files_callback` - Callback to accept or reject the files (Some(path) to accept, None to reject)
     /// * `read_callback` - Callback every time data is written to disk
+    /// * `should_continue` - Callback to check if the transfer should continue
+    ///
+    /// # Returns
+    /// * `Ok(true)` if the transfer was finished successfully
+    /// * `Ok(false)` if the transfer was stopped
     pub async fn receive_files(
         &mut self,
         mut initial_progress_callback: impl FnMut(&[(String, u64, u64)]),
         mut accept_files_callback: impl FnMut(&[FilesAvailable]) -> Option<PathBuf>,
         read_callback: &mut impl FnMut(u64),
-    ) -> Result<(), ReceiveError> {
+        should_continue: &mut impl FnMut() -> bool,
+    ) -> Result<bool, ReceiveError> {
         match receive_packet::<SenderToReceiver>(&self.conn).await? {
             SenderToReceiver::ConnRequest { version_num } => {
                 if version_num != QS_VERSION {
@@ -282,6 +315,8 @@ impl Receiver {
         let recv = self.conn.accept_uni().await?;
         let mut recv = GzipDecoder::new(tokio::io::BufReader::with_capacity(BUF_SIZE, recv));
 
+        let mut interrupted = false;
+
         for file in to_receive.into_iter().flatten() {
             match file {
                 FileSendRecvTree::File { name, skip, size } => {
@@ -292,9 +327,21 @@ impl Receiver {
                         .open(&path)
                         .await?;
 
-                    receive_file(&mut recv, &mut file, skip, size, read_callback).await?;
+                    interrupted = !receive_file(
+                        &mut recv,
+                        &mut file,
+                        skip,
+                        size,
+                        read_callback,
+                        should_continue,
+                    )
+                    .await?;
                     file.sync_all().await?;
                     file.shutdown().await?;
+
+                    if interrupted {
+                        break;
+                    }
                 }
                 FileSendRecvTree::Dir { name, files } => {
                     let path = output_path.join(name);
@@ -303,12 +350,21 @@ impl Receiver {
                         std::fs::create_dir(&path)?;
                     }
 
-                    receive_directory(&mut recv, &path, &files, read_callback)?;
+                    if !receive_directory(&mut recv, &path, &files, read_callback, should_continue)?
+                    {
+                        interrupted = true;
+                        break;
+                    }
                 }
             }
         }
 
         self.close().await;
-        Ok(())
+
+        if interrupted {
+            tracing::info!("transfer interrupted");
+        }
+
+        Ok(!interrupted)
     }
 }

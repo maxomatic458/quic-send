@@ -4861,10 +4861,14 @@ dependencies = [
 
 [[package]]
 name = "qs-gui"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
+ "base64 0.22.1",
+ "bincode",
+ "iroh",
  "lazy_static",
  "qs-core",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "tauri",
@@ -4873,6 +4877,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-shell",
  "thiserror 2.0.12",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "walkdir",

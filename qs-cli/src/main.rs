@@ -153,6 +153,8 @@ async fn main() -> color_eyre::Result<()> {
                             pb.update(last_sent);
                         }
                     },
+                    // In the CLI we don't handle the interruption as the user can just Ctrl+C
+                    &mut || true,
                 )
                 .await
                 .map_err(QuicSendError::Send)?;
@@ -213,6 +215,8 @@ async fn main() -> color_eyre::Result<()> {
                             pb.update(last_received);
                         }
                     },
+                    // In the CLI we don't handle the interruption as the user can just Ctrl+C
+                    &mut || true,
                 )
                 .await
                 .map_err(QuicSendError::Receive)?;

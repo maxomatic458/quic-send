@@ -11,6 +11,11 @@ import { setStore, store } from "../App"
 import { getFileNameFromPath } from "../utils"
 import { FileUploadCardData } from "../Components/FileUploadCard"
 import toast from "solid-toast"
+import {
+    CONNECTED_WITH_CONN_TYPE,
+    FILES_DECISION_EVENT,
+    TICKET_EVENT,
+} from "../events"
 
 export enum SendState {
     ChooseFiles = "S_choose-files",
@@ -29,33 +34,39 @@ function Send(props: SendProps) {
     const [code, setCode] = createSignal<string | null>(null)
     const [files, setFiles] = createSignal<FileUploadCardData[]>([])
 
-    const unlisten1 = listen(
-        "server-connection-code",
-        (code: Event<string>) => {
-            setStore("currentState", SendState.WaitingForReceiver)
-            setCode(code.payload)
+    const unlisten1 = listen(TICKET_EVENT, (code: Event<string>) => {
+        console.log("ticket event")
+        setStore("currentState", SendState.WaitingForReceiver)
+        setCode(code.payload)
+    })
+
+    const unlisten2 = listen(
+        CONNECTED_WITH_CONN_TYPE,
+        (_conn_type: Event<string>) => {
+            setStore("currentState", SendState.WaitingForFileAccept)
         },
     )
 
-    const unlisten2 = listen("receiver-connected", (_) => {
-        setStore("currentState", SendState.WaitingForFileAccept)
-    })
-
-    const unlisten3 = listen("files-decision", (accepted: Event<boolean>) => {
-        console.log(accepted)
-        if (!accepted.payload) {
-            toast.error("Files rejected")
-            setStore("currentState", null)
-        } else {
-            setStore("currentState", SendState.UploadingFiles)
-        }
-    })
+    const unlisten3 = listen(
+        FILES_DECISION_EVENT,
+        (accepted: Event<boolean>) => {
+            console.log(accepted)
+            if (!accepted.payload) {
+                toast.error("Files rejected")
+                setStore("currentState", null)
+            } else {
+                setStore("currentState", SendState.UploadingFiles)
+            }
+        },
+    )
 
     onCleanup(async () => {
         ;(await unlisten1)()
         ;(await unlisten2)()
         ;(await unlisten3)()
     })
+
+    console.log(store.currentState)
 
     return (
         <div class="send">
@@ -64,7 +75,6 @@ function Send(props: SendProps) {
                     initialFilePaths={props.files}
                     onSend={(fileData) => {
                         invoke("upload_files", {
-                            serverAddr: store.roundezvousAddr,
                             files: fileData.map((file) => file.path),
                         }).catch((e: string) => {
                             props.onError(e)
