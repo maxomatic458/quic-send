@@ -21,8 +21,6 @@
     --ticket-color: #fe8300;
     --color-primary: #00b7c3;
     --color-loading-spinner: orange;
-    /* --ticket-background: #cfcfcf; */
-    /* --ticket-border: #898989; */
 }
 
 * {
@@ -108,8 +106,6 @@
 }
 
 .share-code-info {
-    /* background: red; */
-    /* width: fit-content; */
     width: 100%;
     max-width: 75vw;
     position: absolute;
@@ -120,7 +116,6 @@
 }
 
 .share-code {
-    /* background: green; */
     font-family: monospace;
     font-size: 0.8rem;
     color: var(--color-primary);
@@ -128,7 +123,6 @@
     font-weight: bold;
     user-select: all;
     line-height: 0.8rem;
-    /* overflow: hidden; */
     word-wrap: break-word;
 }
 
@@ -201,12 +195,10 @@ button:hover {
 }
 
 .file-list {
-    /* justify items in the center */
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    /* flex-grow: 1; */
 }
 
 .file-list-item-icon {
@@ -214,6 +206,14 @@ button:hover {
     align-items: center;
     justify-content: center;
     margin-right: 0.5rem;
+}
+
+.file-list-item-remaining {
+    display: inline-block;
+    font-family: monospace;
+    text-align: right;
+    width: 2rem;
+    margin-left: 0.5rem;
 }
 
 .file-list-item {
@@ -250,10 +250,13 @@ button:hover {
     font-weight: bold;
 }
 
+.total-remaining-time-value {
+    font-weight: bold;
+}
+
 .cancel-div {
     margin: 1.5rem 1.5rem;
     margin-bottom: 1.5rem;
-    /* margin-left: 50%; */
     margin-left: auto;
     margin-right: auto;
 }
@@ -261,10 +264,8 @@ button:hover {
 .send-div {
     margin: 1.5rem 1.5rem;
     margin-bottom: 1.5rem;
-    /* margin-left: 50%; */
     margin-left: auto;
     margin-right: auto;
-    /* background: red; */
 }
 
 button:disabled {
@@ -300,7 +301,6 @@ button:disabled:hover {
     display: flex;
     scale: 1.4;
     align-items: center;
-    /* margin: 0; */
     height: 24px;
     border: none;
     background: transparent;
@@ -319,7 +319,6 @@ button:disabled:hover {
     position: absolute;
     position: fixed;
     z-index: 100;
-    /* right: 0; */
 }
 
 .window-control-button > button {
@@ -350,4 +349,18 @@ button:disabled:hover {
     justify-content: flex-end;
     margin-right: 0.5rem;
     font-family: monospace;
+}
+
+.transfer-mode {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.transfer-mode-common {
+    /* margin-top: 1rem; */
+    font-family: monospace;
+    font-weight: bold;
+    padding: 0.1rem;
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
 }

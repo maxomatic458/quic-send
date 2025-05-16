@@ -23,6 +23,7 @@ function AcceptFiles(props: AcceptFilesProps) {
                             sizeBytes={file[1]}
                             name={file[0]}
                             isDirectory={file[2]}
+                            currentSpeedBps={0}
                         />
                     )
                 })}

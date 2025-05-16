@@ -66,7 +66,7 @@ function App() {
 
     createEffect(() => {
         if (store.currentState === null) {
-            console.log("ok")
+            console.log("Resetting app state")
             setCode(null)
             setFiles([])
         }

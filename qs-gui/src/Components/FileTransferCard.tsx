@@ -1,5 +1,5 @@
 import { AiOutlineFile, AiOutlineFolder } from "solid-icons/ai"
-import { humanFileSize } from "../utils"
+import { humanDuration, humanFileSize } from "../utils"
 import { createMemo } from "solid-js"
 
 interface FileCardProps {
@@ -7,6 +7,7 @@ interface FileCardProps {
     sizeBytes: number
     name: string
     isDirectory: boolean
+    currentSpeedBps: number
 }
 
 function FileTransferCard(props: FileCardProps) {
@@ -22,6 +23,19 @@ function FileTransferCard(props: FileCardProps) {
         } else {
             return "transparent"
         }
+    })
+
+    // use the progressBytes and sizebytes and currentSpeedBps to determine the remaining time in seconds
+    const humanRemainingTime = createMemo(() => {
+        if (props.currentSpeedBps === 0) {
+            return "?s"
+        }
+        const remainingBytes = props.sizeBytes - (props.progressBytes ?? 0)
+        const remainingSeconds = Math.ceil(
+            remainingBytes / props.currentSpeedBps,
+        )
+
+        return humanDuration(remainingSeconds, true)
     })
 
     return (
@@ -46,6 +60,9 @@ function FileTransferCard(props: FileCardProps) {
                         <span> / </span>
                         <span class="file-list-item-size">
                             {humanFileSize(props.sizeBytes, true, 2)}
+                        </span>
+                        <span class="file-list-item-remaining">
+                            {humanRemainingTime()}
                         </span>
                     </div>
                 ) : (

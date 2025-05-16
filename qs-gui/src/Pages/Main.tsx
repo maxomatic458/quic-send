@@ -17,7 +17,6 @@ function Main(props: MainProps) {
     const unlisten = listen(
         "tauri://drag-drop",
         (event: Event<DragDropEvent>) => {
-            console.log("files dropped")
             const payload = event.payload
             const paths = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
             props.onFilesDropped(paths)
@@ -25,7 +24,7 @@ function Main(props: MainProps) {
     )
 
     onCleanup(async () => {
-        console.log("unlistening 1")
+        console.log("Stopping file drop listener")
         ;(await unlisten)()
     })
 

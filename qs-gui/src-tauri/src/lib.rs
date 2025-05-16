@@ -97,7 +97,7 @@ async fn download_files(window: tauri::Window, ticket: String) -> Result<bool, S
 
     std::thread::sleep(Duration::from_secs(4));
     let conn_type = receiver.connection_type().await;
-    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type).unwrap();
+    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type.map(|c| c.to_string())).unwrap();
 
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
@@ -217,7 +217,7 @@ async fn upload_files(window: tauri::Window, files: Vec<PathBuf>) -> Result<Uplo
 
     std::thread::sleep(Duration::from_secs(4));
     let conn_type = sender.connection_type().await;
-    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type).unwrap();
+    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type.map(|c| c.to_string())).unwrap();
 
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();

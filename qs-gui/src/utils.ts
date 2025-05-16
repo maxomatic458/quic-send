@@ -41,3 +41,42 @@ export function getFileNameFromPath(path: string): string {
     let parts = path.split("/")
     return parts[parts.length - 1]
 }
+
+/// Get a human readable format for the time remaining.
+const UNITS: [number, string, string][] = [
+    [365 * 24 * 60 * 60, "year", "y"],
+    [7 * 24 * 60 * 60, "week", "w"],
+    [24 * 60 * 60, "day", "d"],
+    [60 * 60, "hour", "h"],
+    [60, "minute", "m"],
+    [1, "second", "s"],
+]
+
+export function humanDuration(seconds: number, compact = false): string {
+    let idx = 0
+    for (let i = 0; i < UNITS.length; i++) {
+        idx = i
+        const [cur] = UNITS[i]
+        const next = UNITS[i + 1]
+        if (
+            next &&
+            seconds + Math.floor(next[0] / 2) >= cur + Math.floor(cur / 2)
+        ) {
+            break
+        }
+    }
+
+    const [unit, name, alt] = UNITS[idx]
+    let t = Math.round(seconds / unit)
+    if (idx < UNITS.length - 1) {
+        t = Math.max(t, 2)
+    }
+
+    if (compact) {
+        return `${t}${alt}`
+    } else if (t === 1) {
+        return `${t} ${name}`
+    } else {
+        return `${t} ${name}s`
+    }
+}
