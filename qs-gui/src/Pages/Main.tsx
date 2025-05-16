@@ -1,9 +1,8 @@
 import { TbFileUpload } from "solid-icons/tb"
-import { createEffect } from "solid-js"
+import { onCleanup } from "solid-js"
 import ReceiveCodeInput from "../Components/ReceiveCodeInput"
 import { DragDropEvent } from "@tauri-apps/api/webview"
 import { Event, listen } from "@tauri-apps/api/event"
-import { store } from "../App"
 
 interface MainProps {
     /// Callback for when the code is entered
@@ -25,10 +24,9 @@ function Main(props: MainProps) {
         },
     )
 
-    createEffect(async () => {
-        if (store.currentState !== null) {
-            ;(await unlisten)()
-        }
+    onCleanup(async () => {
+        console.log("unlistening 1")
+        ;(await unlisten)()
     })
 
     return (

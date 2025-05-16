@@ -69,6 +69,7 @@ function UploadFiles(props: UploadFilesProps) {
     )
 
     onCleanup(async () => {
+        console.log("unlistening 2")
         ;(await unlisten)()
     })
 
