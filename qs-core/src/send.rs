@@ -3,7 +3,7 @@
 use crate::{
     common::{get_files_available, receive_packet, send_packet, FileSendRecvTree, PacketRecvError},
     packets::{ReceiverToSender, SenderToReceiver},
-    BUF_SIZE, QS_VERSION,
+    BUF_SIZE, QS_PROTO_VERSION,
 };
 use async_compression::tokio::write::GzipEncoder;
 use std::path::PathBuf;
@@ -216,7 +216,7 @@ impl Sender {
     ) -> Result<bool, SendError> {
         send_packet(
             SenderToReceiver::ConnRequest {
-                version_num: QS_VERSION.to_string(),
+                version_num: QS_PROTO_VERSION.to_string(),
             },
             &self.conn,
         )
@@ -225,7 +225,7 @@ impl Sender {
         match receive_packet::<ReceiverToSender>(&self.conn).await? {
             ReceiverToSender::Ok => (),
             ReceiverToSender::WrongVersion { expected } => {
-                return Err(SendError::WrongVersion(expected, QS_VERSION.to_string()));
+                return Err(SendError::WrongVersion(expected, QS_PROTO_VERSION.to_string()));
             }
             p => return Err(SendError::UnexpectedDataPacket(p)),
         }

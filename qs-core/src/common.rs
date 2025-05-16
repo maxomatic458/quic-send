@@ -317,7 +317,7 @@ pub enum PacketRecvError {
     Read(#[from] iroh::endpoint::ReadError),
 }
 
-pub async fn receive_packet<P: Decode + std::fmt::Debug>(
+pub async fn receive_packet<P: Decode<()> + std::fmt::Debug>(
     conn: &iroh::endpoint::Connection,
 ) -> Result<P, PacketRecvError> {
     let mut recv = conn.accept_uni().await?;
