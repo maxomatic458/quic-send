@@ -35,6 +35,9 @@ interface ReceiveProps {
 
 function Receive(props: ReceiveProps) {
     const [files, setFiles] = createSignal<[string, number, boolean][]>([])
+    const [transferMode, setTransferMode] = createSignal<
+        "direct" | "mixed" | "relay" | null
+    >(null)
 
     invoke("download_files", {
         ticket: props.code,
@@ -48,8 +51,16 @@ function Receive(props: ReceiveProps) {
 
     const unlisten2 = listen(
         CONNECTED_WITH_CONN_TYPE,
-        (_conn_type: Event<string>) => {
+        (connType: Event<string>) => {
             setStore("currentState", ReceiveState.WaitingForFiles)
+            if (connType.payload.startsWith("direct")) {
+                setTransferMode("direct")
+            } else if (connType.payload.startsWith("mixed")) {
+                setTransferMode("mixed")
+            } else if (connType.payload.startsWith("relay")) {
+                setTransferMode("relay")
+            }
+            console.log("Connected with conn type", connType.payload)
         },
     )
 
@@ -99,11 +110,12 @@ function Receive(props: ReceiveProps) {
                     type="receive"
                     onComplete={() => {
                         sendNotification({
-                            title: "Quic send",
+                            title: "quic send",
                             body: "Transfer completed",
                         })
                         setStore("currentState", null)
                     }}
+                    transferMode={transferMode()!}
                 />
             ) : null}
         </div>

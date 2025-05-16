@@ -1,9 +1,8 @@
 import { TbFileUpload } from "solid-icons/tb"
-import { createEffect } from "solid-js"
+import { onCleanup } from "solid-js"
 import ReceiveCodeInput from "../Components/ReceiveCodeInput"
 import { DragDropEvent } from "@tauri-apps/api/webview"
 import { Event, listen } from "@tauri-apps/api/event"
-import { store } from "../App"
 
 interface MainProps {
     /// Callback for when the code is entered
@@ -18,17 +17,15 @@ function Main(props: MainProps) {
     const unlisten = listen(
         "tauri://drag-drop",
         (event: Event<DragDropEvent>) => {
-            console.log("files dropped")
             const payload = event.payload
             const paths = (payload as any).paths // TODO: event has no type field (maybe bug on tauri?)
             props.onFilesDropped(paths)
         },
     )
 
-    createEffect(async () => {
-        if (store.currentState !== null) {
-            ;(await unlisten)()
-        }
+    onCleanup(async () => {
+        console.log("Stopping file drop listener")
+        ;(await unlisten)()
     })
 
     return (

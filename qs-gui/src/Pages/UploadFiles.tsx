@@ -28,11 +28,8 @@ function UploadFiles(props: UploadFilesProps) {
     async function handleNewFiles(newFiles: string[]) {
         let newFilesMap: Map<string, FileUploadCardData> = new Map()
 
-        console.log(newFiles)
-
         for (const path of newFiles) {
             if (files().has(path)) {
-                console.log(files())
                 const fileName = getFileNameFromPath(path)
                 toast.error(`${fileName} already added`)
                 continue
@@ -69,6 +66,7 @@ function UploadFiles(props: UploadFilesProps) {
     )
 
     onCleanup(async () => {
+        console.log("Stopping file drop listener in upload menu")
         ;(await unlisten)()
     })
 
@@ -89,7 +87,7 @@ function UploadFiles(props: UploadFilesProps) {
 
                             if (newFiles.size === 0) {
                                 setStore("currentState", null)
-                                console.log("No files to send")
+                                console.log("No files to send, resetting state")
                             }
                         }}
                     />

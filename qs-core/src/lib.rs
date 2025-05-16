@@ -15,7 +15,7 @@ pub mod utils;
 pub const BUF_SIZE: usize = 8192;
 pub const SEND_SERVER_NAME: &str = "quic-send";
 pub const KEEP_ALIVE_INTERVAL_SECS: u64 = 5;
-pub const QS_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const QS_PROTO_VERSION: &str = "0.4.0"; 
 pub const QS_ALPN: &[u8] = b"quic-send/0.4.0";
 
 #[derive(Error, Debug)]

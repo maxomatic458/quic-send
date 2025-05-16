@@ -9,7 +9,7 @@ use qs_core::{
     common::FilesAvailable,
     receive::{ReceiveError, Receiver, ReceiverArgs},
     send::{SendError, Sender, SenderArgs},
-    QuicSendError, QS_ALPN, QS_VERSION,
+    QuicSendError, QS_ALPN, QS_PROTO_VERSION,
 };
 use std::{
     cell::RefCell,
@@ -23,7 +23,7 @@ use thiserror::Error;
 use tracing::Level;
 
 #[derive(Parser, Debug)]
-#[clap(version = QS_VERSION, author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = QS_PROTO_VERSION, author = env!("CARGO_PKG_AUTHORS"))]
 struct Args {
     /// Log level
     #[clap(long, short, default_value = "error")]
@@ -35,13 +35,13 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Mode {
-    #[clap(name = "send", about = "Send files")]
+    #[clap(name = "send", about = "Send files", aliases = &["s"])]
     Send {
         /// Files/directories to send
         #[clap(name = "files or directories", required = true)]
         files: Vec<PathBuf>,
     },
-    #[clap(name = "receive", about = "Receive files")]
+    #[clap(name = "receive", about = "Receive files", aliases = &["r"])]
     Receive {
         /// Overwrite files instead of resuming
         #[clap(long, short = 'f')]
@@ -83,7 +83,7 @@ async fn main() -> color_eyre::Result<()> {
         colored::control::set_virtual_terminal(true).unwrap();
     }
 
-    tracing::debug!("qs {}", QS_VERSION);
+    tracing::debug!("qs {}", QS_PROTO_VERSION);
 
     // Check if the files even exist
     if let Mode::Send { files, .. } = &args.mode {

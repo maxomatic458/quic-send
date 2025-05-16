@@ -1,6 +1,6 @@
 [package]
 name = "qs-cli"
-version = "0.4.0"
+version = "0.4.1"
 description = "A quic based peer-to-peer file transfer tool"
 authors = ["Maxomatic458"]
 edition = "2021"
@@ -15,7 +15,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 quinn = { workspace = true }
-clap = { workspace = true }
 semver = { workspace = true }
 iroh = { workspace = true }
 rand = { workspace = true }
@@ -23,7 +22,8 @@ bincode = { workspace = true, features = ["serde"] }
 copypasta = { workspace = true }
 base64 = { workspace = true }
 
-qs-core = "0.4.0"
+clap = { version = "4.5.31", features = ["derive"] }
+qs-core = "0.4.1"
 async-compression = { version = "0.4.12", features = ["tokio", "gzip"] }
 indicatif = "0.17.8"
 dialoguer = "0.11.0"

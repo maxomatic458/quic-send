@@ -10,6 +10,7 @@ quic-send is a peer-to-peer file transfer tool that uses the QUIC protocol to tr
 ## Features
 - **P2P Data transfer**: All files are sent over a direct connection, the data is never relayed through another server. The only other parties
 involved is a STUN server (Google STUN) and an optional roundezvous server (included in this repo).
+- **UI application**: quic-send is available as a easy to use GUI application as well.
 - **Encryption**: quic-send uses the encryption provided by the [quinn](https://crates.io/crates/quinn) crate (which uses [rustls](https://crates.io/crates/rustls) and [ring](https://crates.io/crates/ring) under the hood).
 - **Resumable transfers**: If the connection is lost, the transfer can be resumed from where it left off.
 - **Transfer files & Folders**
@@ -51,7 +52,7 @@ $ qs receive 123456
 | Direct (P2P) transfer  | ✅ | (✅)* | ❌ |
 | Resumable transfers | ✅ | ❌ | ✅ |
 | Transfer files & Folders | ✅ | ✅ | ✅ |
-| (fallback) Relay server | ❌ | ✅ | ✅ |
+| (fallback) Relay server | ✅ | ✅ | ✅ |
 
 * While it is possible in Magic Wormhole, establishing a direct connection is very unlikely (as the connection tries to establish a direct TCP connection), quick send uses UDP hole punching instead which is way more reliable and works for most networks.
 

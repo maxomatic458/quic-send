@@ -33,24 +33,36 @@ interface SendProps {
 function Send(props: SendProps) {
     const [code, setCode] = createSignal<string | null>(null)
     const [files, setFiles] = createSignal<FileUploadCardData[]>([])
+    const [transferMode, setTransferMode] = createSignal<
+        "direct" | "mixed" | "relay" | null
+    >(null)
 
     const unlisten1 = listen(TICKET_EVENT, (code: Event<string>) => {
-        console.log("ticket event")
+        console.log(`Received code: ${code.payload}`)
         setStore("currentState", SendState.WaitingForReceiver)
         setCode(code.payload)
     })
 
     const unlisten2 = listen(
         CONNECTED_WITH_CONN_TYPE,
-        (_conn_type: Event<string>) => {
+        (connType: Event<string>) => {
+            console.log("here")
             setStore("currentState", SendState.WaitingForFileAccept)
+            if (connType.payload.startsWith("direct")) {
+                setTransferMode("direct")
+            } else if (connType.payload.startsWith("mixed")) {
+                setTransferMode("mixed")
+            } else if (connType.payload.startsWith("relay")) {
+                setTransferMode("relay")
+            }
+            console.log("Connected with conn type", connType.payload)
         },
     )
 
     const unlisten3 = listen(
         FILES_DECISION_EVENT,
         (accepted: Event<boolean>) => {
-            console.log(accepted)
+            console.log(`Files accepted: ${accepted.payload}`)
             if (!accepted.payload) {
                 toast.error("Files rejected")
                 setStore("currentState", null)
@@ -65,8 +77,6 @@ function Send(props: SendProps) {
         ;(await unlisten2)()
         ;(await unlisten3)()
     })
-
-    console.log(store.currentState)
 
     return (
         <div class="send">
@@ -100,11 +110,12 @@ function Send(props: SendProps) {
                     type="send"
                     onComplete={() => {
                         sendNotification({
-                            title: "Quic send",
+                            title: "quic send",
                             body: "Transfer completed",
                         })
                         setStore("currentState", null)
                     }}
+                    transferMode={transferMode()}
                 />
             ) : null}
         </div>

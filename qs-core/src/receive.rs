@@ -6,7 +6,7 @@ use crate::{
         PacketRecvError,
     },
     packets::{ReceiverToSender, SenderToReceiver},
-    BUF_SIZE, QS_ALPN, QS_VERSION,
+    BUF_SIZE, QS_ALPN, QS_PROTO_VERSION,
 };
 use async_compression::tokio::bufread::GzipDecoder;
 use std::{io, path::PathBuf};
@@ -222,16 +222,16 @@ impl Receiver {
     ) -> Result<bool, ReceiveError> {
         match receive_packet::<SenderToReceiver>(&self.conn).await? {
             SenderToReceiver::ConnRequest { version_num } => {
-                if version_num != QS_VERSION {
+                if version_num != QS_PROTO_VERSION {
                     send_packet(
                         ReceiverToSender::WrongVersion {
-                            expected: QS_VERSION.to_string(),
+                            expected: QS_PROTO_VERSION.to_string(),
                         },
                         &self.conn,
                     )
                     .await?;
                     return Err(ReceiveError::WrongVersion(
-                        QS_VERSION.to_string(),
+                        QS_PROTO_VERSION.to_string(),
                         version_num,
                     ));
                 }

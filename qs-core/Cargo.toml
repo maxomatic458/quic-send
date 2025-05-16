@@ -1,6 +1,6 @@
 [package]
 name = "qs-core"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = ["Maxomatic458"]
 description = "quic send core library"
@@ -17,7 +17,6 @@ quinn = { workspace = true }
 rustls = { workspace = true }
 rcgen = { workspace = true }
 bincode = { workspace = true }
-clap = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 iroh = { workspace = true }
