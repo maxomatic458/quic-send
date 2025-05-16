@@ -1,10 +1,8 @@
 name: 'Release UI'
 
 on:
-  push:
-    branches:
-      - master
-
+  release:
+    types: [published]
 # This workflow will trigger on each push to the `master` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
 
 jobs:
