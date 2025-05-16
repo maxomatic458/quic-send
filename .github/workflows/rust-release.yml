@@ -47,7 +47,7 @@ jobs:
           override: true
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --bin qs --target ${{ matrix.target }} 
 
       - name: Prepare binary for packaging
         shell: bash
