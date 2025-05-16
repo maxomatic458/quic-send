@@ -14,13 +14,13 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: lantun-linux-x86_64.zip
+            artifact_name: qs-linux-x86_64.zip
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: lantun-windows-x86_64.zip
+            artifact_name: qs-windows-x86_64.zip
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: lantun-macos-x86_64.zip
+            artifact_name: qs-macos-x86_64.zip
 
     steps:
       - name: Checkout code
@@ -54,9 +54,9 @@ jobs:
         run: |
           mkdir dist
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            cp target/${{ matrix.target }}/release/lantun.exe dist/
+            cp target/${{ matrix.target }}/release/qs.exe dist/
           else
-            cp target/${{ matrix.target }}/release/lantun dist/
+            cp target/${{ matrix.target }}/release/qs dist/
           fi
 
       - name: Package binary (zip)
@@ -64,9 +64,9 @@ jobs:
         run: |
           cd dist
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            7z a ../${{ matrix.artifact_name }} lantun.exe
+            7z a ../${{ matrix.artifact_name }} qs.exe
           else
-            zip ../${{ matrix.artifact_name }} lantun
+            zip ../${{ matrix.artifact_name }} qs
           fi
 
       - name: Upload artifact
@@ -92,6 +92,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/**/lantun-*.zip
+            artifacts/**/qs-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
