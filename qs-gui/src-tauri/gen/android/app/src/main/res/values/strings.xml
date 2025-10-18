@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">quic send</string>
+    <string name="main_activity_title">quic send</string>
+</resources>
