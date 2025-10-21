@@ -7,6 +7,7 @@ import toast, { Toaster } from "solid-toast"
 import Send, { SendState } from "./Pages/Send"
 import WindowControls from "./Components/WindowControls"
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window"
+import { isMobile } from "./utils"
 
 export interface AppState {
     currentState: CurrentState
@@ -76,7 +77,7 @@ function App() {
         <>
             <Toaster position="top-right" gutter={8} />
             <div class="app">
-                <WindowControls />
+                {!isMobile() && <WindowControls />}
 
                 {store.currentState === null ? (
                     <Main

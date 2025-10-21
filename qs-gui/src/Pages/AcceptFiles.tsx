@@ -1,7 +1,8 @@
 import { createSignal } from "solid-js"
-import { humanFileSize } from "../utils"
+import { humanFileSize, isMobile } from "../utils"
 import FileTransferCard from "../Components/FileTransferCard"
 import { open } from "@tauri-apps/plugin-dialog"
+import * as path from '@tauri-apps/api/path';
 
 interface AcceptFilesProps {
     files: [string, number, boolean][]
@@ -40,14 +41,20 @@ function AcceptFiles(props: AcceptFilesProps) {
                 <div class="select-download-path">
                     <button
                         onClick={() => {
-                            open({
-                                directory: true,
-                                multiple: false,
-                            }).then((res) => {
-                                if (res) {
+                            if (isMobile()) {
+                                path.downloadDir().then((res) => {
                                     setDownloadPath(res)
-                                }
-                            })
+                                })
+                            } else {
+                                open({
+                                    directory: true,
+                                    multiple: false,
+                                }).then((res) => {
+                                    if (res) {
+                                        setDownloadPath(res)
+                                    }
+                                })
+                            }
                         }}
                     >
                         {downloadPath() ?? "Select download path"}

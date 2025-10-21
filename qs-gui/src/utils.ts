@@ -1,3 +1,5 @@
+import { platform } from "@tauri-apps/plugin-os"
+
 /// https://stackoverflow.com/questions/10420352/converting-file-size-in-bytes-to-human-readable-string
 
 /**
@@ -79,4 +81,8 @@ export function humanDuration(seconds: number, compact = false): string {
     } else {
         return `${t} ${name}s`
     }
+}
+
+export function isMobile(): boolean {
+    return (platform() === "android" || platform() === "ios")
 }

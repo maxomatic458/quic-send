@@ -30,6 +30,13 @@ function ReceiveCodeInput(props: ReceiveCodeInputProps) {
                         setCode((e.target as HTMLInputElement).value)
                     }}
                 />
+                <button
+                    onClick={() => {
+                        props.onSubmit(code())
+                    }}
+                >
+                    Submit
+                </button>
             </div>
         </div>
     )

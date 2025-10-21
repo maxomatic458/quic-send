@@ -97,7 +97,9 @@ async fn download_files(window: tauri::Window, ticket: String) -> Result<bool, S
 
     std::thread::sleep(Duration::from_secs(4));
     let conn_type = receiver.connection_type().await;
-    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type.map(|c| c.to_string())).unwrap();
+    window
+        .emit(CONNECTED_WITH_CONN_TYPE, conn_type.map(|c| c.to_string()))
+        .unwrap();
 
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
@@ -217,7 +219,9 @@ async fn upload_files(window: tauri::Window, files: Vec<PathBuf>) -> Result<Uplo
 
     std::thread::sleep(Duration::from_secs(4));
     let conn_type = sender.connection_type().await;
-    window.emit(CONNECTED_WITH_CONN_TYPE, conn_type.map(|c| c.to_string())).unwrap();
+    window
+        .emit(CONNECTED_WITH_CONN_TYPE, conn_type.map(|c| c.to_string()))
+        .unwrap();
 
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
@@ -315,6 +319,7 @@ pub fn run() {
 
     std::env::set_var("RUST_LOG", "debug");
     tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
