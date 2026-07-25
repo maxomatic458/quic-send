@@ -1,5 +1,8 @@
 # quic-send
 
+> [!WARNING]
+> This project has been archived in favor of [fsend](https://github.com/maxomatic458/fsend).
+
 quic-send is a peer-to-peer file transfer tool that uses the QUIC protocol to transfer data over a direct connection (no relay involved).
 
 > [!NOTE]
